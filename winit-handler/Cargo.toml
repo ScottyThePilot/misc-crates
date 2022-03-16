@@ -5,8 +5,4 @@ edition = "2021"
 
 [dependencies]
 bitvec = "1.0"
-gilrs = { version = "0.8", optional = true }
 winit = "0.26"
-
-[features]
-default = ["gilrs"]
