@@ -1,0 +1,6 @@
+[workspace]
+members = [
+  "puddle",
+  "slice-ext",
+  "winit-handler"
+]
