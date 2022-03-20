@@ -117,9 +117,22 @@ impl<T> IdMap<T> {
     self.map.get_mut(&id)
   }
 
+  #[inline]
+  pub fn next_id(&mut self) -> Id<T> {
+    self.context.next_id()
+  }
+
   pub fn insert_new(&mut self, value: T) -> Id<T> {
-    let id = self.context.next_id();
+    let id = self.next_id();
     let result = self.map.insert(id, value);
+    debug_assert!(result.is_none());
+    id
+  }
+
+  pub fn insert_new_with<F>(&mut self, f: F) -> Id<T>
+  where F: FnOnce(Id<T>) -> T {
+    let id = self.next_id();
+    let result = self.map.insert(id, f(id));
     debug_assert!(result.is_none());
     id
   }
