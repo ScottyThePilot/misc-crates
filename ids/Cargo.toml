@@ -1,0 +1,12 @@
+[package]
+name = "ids"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { version = "1.0", optional = true }
+nohash-hasher = { version = "0.2.0", optional = true }
+
+[features]
+default = ["map"]
+map = ["nohash-hasher"]
