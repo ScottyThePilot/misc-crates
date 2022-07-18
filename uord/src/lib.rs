@@ -31,7 +31,7 @@ impl<T> UOrd<T> {
   }
 
   #[inline]
-  pub fn contains<Q>(&self, x: &Q) -> bool
+  pub fn contains<Q: ?Sized>(&self, x: &Q) -> bool
   where T: Borrow<Q>, Q: Eq {
     self.min.borrow() == x || self.max.borrow() == x
   }
