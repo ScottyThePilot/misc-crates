@@ -5,4 +5,4 @@ edition = "2021"
 
 [dependencies]
 bitvec = "1.0"
-winit = "0.26"
+winit = "*"

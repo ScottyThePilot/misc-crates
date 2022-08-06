@@ -1,57 +1,69 @@
 //! A trait-based event handler for [`winit`][winit].
 #![warn(missing_copy_implementations, missing_debug_implementations)]
 
-use std::ops::Index;
-use std::path::{Path, PathBuf};
-use std::rc::Rc;
+pub mod extra;
 
 use bitvec::array::BitArray;
-use winit::dpi::{PhysicalSize, LogicalPosition};
+use winit::dpi::PhysicalSize;
 use winit::event::*;
 use winit::event_loop::{EventLoop, ControlFlow};
 use winit::window::Window;
+
+use std::ops::Index;
+use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 
 
 /// Handles events emitted by a winit event loop.
 #[allow(unused_variables)]
-pub trait EventHandler<T>: Sized + 'static {
+pub trait EventHandler<T = ()>: Sized + 'static {
   /// Called upon [`Event::RedrawRequested`][winit::event::Event::RedrawRequested].
-  fn render(&mut self, state: &State) {}
+  fn render(&mut self, window_state: &WindowState) {}
   /// Called upon [`Event::MainEventsCleared`][winit::event::Event::MainEventsCleared].
-  fn update(&mut self, state: &State) {}
+  fn update(&mut self, window_state: &WindowState) {}
   /// Called when an event is sent from [`EventLoopProxy::send_event`][winit::event_loop::EventLoopProxy::send_event].
-  fn user_event(&mut self, state: &State, event: T) {}
+  fn user_event(&mut self, window_state: &WindowState, event: T) {}
   /// Called when an event from the keyboard has been received.
-  fn keyboard_input(&mut self, state: &State, cond: bool, keycode: Option<VirtualKeyCode>, scancode: ScanCode) {}
+  fn keyboard_input(&mut self, window_state: &WindowState, state: ElementState, keycode: Option<VirtualKeyCode>, scancode: ScanCode) {}
   /// Called when the window receives a unicode character.
-  fn text_input(&mut self, state: &State, ch: char) {}
+  fn text_input(&mut self, window_state: &WindowState, ch: char) {}
   /// Called when the cursor has moved on the window.
-  fn cursor_moved(&mut self, state: &State, pos: (f32, f32)) {}
+  fn cursor_moved(&mut self, window_state: &WindowState, pos: (f32, f32)) {}
   /// Called when a mouse button press has been received.
-  fn mouse_input(&mut self, state: &State, cond: bool, button: MouseButton) {}
+  fn mouse_input(&mut self, window_state: &WindowState, state: ElementState, button: MouseButton) {}
   /// Called when a mouse wheel or touchpad scroll occurs.
-  fn mouse_scroll(&mut self, state: &State, delta: (f32, f32)) {}
+  fn mouse_scroll(&mut self, window_state: &WindowState, delta: (f32, f32)) {}
   /// Called when the application loses or gains focus.
-  fn focused(&mut self, state: &State, cond: bool) {}
+  fn focused(&mut self, window_state: &WindowState, state: bool) {}
   /// Called when a file is dropped in the application window.
-  fn file_dropped(&mut self, state: &State, path: PathBuf) {}
+  fn file_dropped(&mut self, window_state: &WindowState, path: PathBuf) {}
   /// Called when either the window has been resized or the scale factor has changed.
-  fn resized(&mut self, state: &State, window_size: (u32, u32), scale_factor: f64) {}
+  fn resized(&mut self, window_state: &WindowState, window_size: (u32, u32), scale_factor: f64) {}
   /// Called when the user attempts to close the application.
   /// A return value of `true` closes the application, while `false` cancels closing it.
   /// Defaults to an 'always `true`' implementation.
-  fn close(&mut self, state: &State) -> bool { true }
+  fn close(&mut self, window_state: &WindowState) -> bool { true }
   /// Instructs the event dispatcher whether the handler wants the application to exit.
   /// Defaults to an 'always `false`' implementation.
-  fn should_exit(&self, state: &State) -> bool { false }
+  fn should_exit(&self, window_state: &WindowState) -> bool { false }
   /// Called once the event loop has been destroyed and will no longer dispatch any more events.
   /// This is different from the `close` function in that the handler has no choice over the application state.
   fn destroy(self) {}
 }
 
-const KEYCODES: usize = 192;
-const SCANCODES: usize = 512;
+// More than 162 bits, enough space to store the state of every key
+const KEYCODE_BITS: usize = 192;
+const SCANCODE_BITS: usize = 512;
+const SCANCODE_MAX: u32 = 512;
+
+#[inline]
+fn element_state_to_bool(state: ElementState) -> bool {
+  match state {
+    ElementState::Pressed => true,
+    ElementState::Released => false
+  }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct InputState {
@@ -62,9 +74,8 @@ pub struct InputState {
   mouse_right_held: bool,
   mouse_middle_held: bool,
   key_actions: Vec<KeyAction>,
-  // More than 162 bits, enough space to store the state of every key
-  keys_held_keycode: BitArray<[u32; KEYCODES / 32]>,
-  keys_held_scancode: BitArray<[u32; SCANCODES / 32]>,
+  keys_held_keycode: BitArray<[u32; KEYCODE_BITS / 32]>,
+  keys_held_scancode: BitArray<[u32; SCANCODE_BITS / 32]>,
   modifiers_state: ModifiersState,
   scroll_rel: (f32, f32),
   text: String
@@ -90,44 +101,59 @@ impl InputState {
     }
   }
 
+  /// Returns a list of mouse button actions performed during the current frame.
   #[inline]
   pub fn mouse_actions(&self) -> &[MouseAction] {
     &self.mouse_actions
   }
 
+  /// Checks whether or not the given mouse button is currently pressed.
   #[inline]
-  pub fn button_held(&self, button: MouseButton) -> bool {
+  pub fn is_button_held(&self, button: MouseButton) -> bool {
     self[button]
   }
 
+  /// Returns a list of key actions performed during the current frame.
   #[inline]
   pub fn key_actions(&self) -> &[KeyAction] {
     &self.key_actions
   }
 
+  /// Checks whether or not the given key is currently pressed.
   #[inline]
-  pub fn key_held(&self, keycode: VirtualKeyCode) -> bool {
+  pub fn is_key_held(&self, keycode: VirtualKeyCode) -> bool {
     self[keycode]
   }
 
+  /// Checks whether or not the given key is currently pressed, takes a scancode.
   #[inline]
-  pub fn key_held_scancode(&self, scancode: ScanCode) -> bool {
+  pub fn is_key_held_scancode(&self, scancode: ScanCode) -> bool {
     self[scancode]
   }
 
-  pub fn key_pressed(&self, keycode: VirtualKeyCode) -> bool {
+  /// Checks whether or not the given key was pressed during the current frame.
+  pub fn was_key_pressed(&self, keycode: VirtualKeyCode) -> bool {
     self.key_actions.iter()
       .find(|&&action| match action {
-        KeyAction::Pressed(candidate, _) => candidate == keycode,
+        KeyAction {
+          keycode: candidate,
+          state: ElementState::Pressed,
+          ..
+        } => candidate == keycode,
         _ => false
       })
       .is_some()
   }
 
-  pub fn key_released(&self, keycode: VirtualKeyCode) -> bool {
+  /// Checks whether or not the given key was released during the current frame.
+  pub fn was_key_released(&self, keycode: VirtualKeyCode) -> bool {
     self.key_actions.iter()
       .find(|&&action| match action {
-        KeyAction::Released(candidate, _) => candidate == keycode,
+        KeyAction {
+          keycode: candidate,
+          state: ElementState::Released,
+          ..
+        } => candidate == keycode,
         _ => false
       })
       .is_some()
@@ -159,65 +185,38 @@ impl InputState {
 
   fn reset(&mut self) {
     self.cursor_pos_prev = self.cursor_pos;
-    self.mouse_actions = Vec::new();
-    self.key_actions = Vec::new();
+    self.mouse_actions = Vec::with_capacity(4);
+    self.key_actions = Vec::with_capacity(4);
     self.scroll_rel = (0.0, 0.0);
     self.text.clear();
   }
 
-  fn handle_keyboard_input(&mut self, input: KeyboardInput) -> (bool, Option<VirtualKeyCode>, ScanCode) {
+  fn handle_keyboard_input(&mut self, input: KeyboardInput) -> (ElementState, Option<VirtualKeyCode>, ScanCode) {
     let KeyboardInput { scancode, state, virtual_keycode: keycode, .. } = input;
 
-    match state {
-      ElementState::Pressed => {
-        if let Some(keycode) = keycode {
-          self.keys_held_keycode.set(keycode as usize, true);
-          self.key_actions.push(KeyAction::Pressed(keycode, scancode));
-        };
+    let cond = element_state_to_bool(state);
 
-        if (scancode as usize) < SCANCODES {
-          self.keys_held_scancode.set(scancode as usize, true);
-        };
+    if let Some(keycode) = keycode {
+      self.keys_held_keycode.set(keycode as usize, cond);
+      self.key_actions.push(KeyAction { keycode, scancode, state });
+    };
 
-        (true, keycode, scancode)
-      },
-      ElementState::Released => {
-        if let Some(keycode) = keycode {
-          self.keys_held_keycode.set(keycode as usize, false);
-          self.key_actions.push(KeyAction::Released(keycode, scancode));
-        };
+    if scancode < SCANCODE_MAX {
+      self.keys_held_scancode.set(scancode as usize, cond);
+    };
 
-        if (scancode as usize) < SCANCODES {
-          self.keys_held_scancode.set(scancode as usize, false);
-        };
-
-        (false, keycode, scancode)
-      }
-    }
+    (state, keycode, scancode)
   }
 
-  fn handle_mouse_input(&mut self, state: ElementState, button: MouseButton) -> bool {
-    match state {
-      ElementState::Pressed => {
-        self.set_button_value(button, true);
-        self.mouse_actions.push(MouseAction::Pressed(button));
-        true
-      },
-      ElementState::Released => {
-        self.set_button_value(button, false);
-        self.mouse_actions.push(MouseAction::Released(button));
-        false
-      }
-    }
+  fn handle_mouse_input(&mut self, state: ElementState, button: MouseButton) {
+    self.set_button_value(button, element_state_to_bool(state));
+    self.mouse_actions.push(MouseAction { button, state });
   }
 
   fn handle_mouse_wheel(&mut self, delta: MouseScrollDelta, scale_factor: f64) -> (f32, f32) {
-    let delta = match delta {
+    let delta: (f32, f32) = match delta {
       MouseScrollDelta::LineDelta(x, y) => (x, y),
-      MouseScrollDelta::PixelDelta(pos) => {
-        let LogicalPosition { x, y } = pos.to_logical::<f32>(scale_factor);
-        (x, y)
-      }
+      MouseScrollDelta::PixelDelta(pos) => pos.to_logical::<f32>(scale_factor).into()
     };
 
     self.scroll_rel.0 += delta.0;
@@ -260,7 +259,7 @@ impl Index<ScanCode> for InputState {
 
   #[inline]
   fn index(&self, scancode: ScanCode) -> &bool {
-    if (scancode as usize) < SCANCODES {
+    if scancode < SCANCODE_MAX {
       &self.keys_held_scancode[scancode as usize]
     } else {
       &false
@@ -283,21 +282,20 @@ impl Index<MouseButton> for InputState {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum KeyAction {
-  Pressed(VirtualKeyCode, ScanCode),
-  Released(VirtualKeyCode, ScanCode)
+pub struct KeyAction {
+  pub keycode: VirtualKeyCode,
+  pub scancode: ScanCode,
+  pub state: ElementState
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MouseAction {
-  Pressed(MouseButton),
-  Released(MouseButton)
+pub struct MouseAction {
+  pub button: MouseButton,
+  pub state: ElementState
 }
 
-
-
 #[derive(Debug, Clone)]
-pub struct State {
+pub struct WindowState {
   input_state: InputState,
   dropped_file: Option<PathBuf>,
   scale_factor: f64,
@@ -305,9 +303,9 @@ pub struct State {
   window: Rc<Window>
 }
 
-impl State {
+impl WindowState {
   fn from_window(window: Rc<Window>) -> Self {
-    State {
+    WindowState {
       input_state: InputState::default(),
       dropped_file: None,
       scale_factor: window.scale_factor(),
@@ -347,10 +345,11 @@ impl State {
   }
 
   #[inline]
-  pub fn window_ptr(&self) -> Rc<Window> {
+  pub fn window_ref(&self) -> Rc<Window> {
     Rc::clone(&self.window)
   }
 
+  /// Dispatches an event to a handler given an [`Event`][winit::event::Event].
   fn handle_event<T, H: EventHandler<T>>(&mut self, handler: &mut H, event: Event<T>, cf: &mut ControlFlow) {
     match event {
       Event::NewEvents(_) => self.reset(),
@@ -384,8 +383,8 @@ impl State {
           handler.resized(self, self.window_size.into(), self.scale_factor);
         },
         WindowEvent::KeyboardInput { input, .. } => {
-          let (cond, keycode, scancode) = self.input_state.handle_keyboard_input(input);
-          handler.keyboard_input(self, cond, keycode, scancode);
+          let (state, keycode, scancode) = self.input_state.handle_keyboard_input(input);
+          handler.keyboard_input(self, state, keycode, scancode);
         },
         WindowEvent::ReceivedCharacter(ch) => {
           self.input_state.text.push(ch);
@@ -397,8 +396,8 @@ impl State {
           handler.cursor_moved(self, position);
         },
         WindowEvent::MouseInput { state, button, .. } => {
-          let cond = self.input_state.handle_mouse_input(state, button);
-          handler.mouse_input(self, cond, button);
+          self.input_state.handle_mouse_input(state, button);
+          handler.mouse_input(self, state, button);
         },
         WindowEvent::MouseWheel { delta, .. } => {
           let delta = self.input_state.handle_mouse_wheel(delta, self.scale_factor);
@@ -422,20 +421,17 @@ impl State {
   }
 }
 
-pub fn run<T, H: EventHandler<T>>(
-  event_loop: EventLoop<T>,
-  window: impl Into<Rc<Window>>,
-  handler: H
-) -> ! {
-  let mut state = State::from_window(window.into());
+pub fn run<T, W, H>(event_loop: EventLoop<T>, window: W, handler: H) -> !
+where W: Into<Rc<Window>>, H: EventHandler<T> {
+  let mut window_state = WindowState::from_window(window.into());
   let mut handler = Some(handler);
   event_loop.run(move |event, _, cf| {
     if let Event::LoopDestroyed = event {
       handler.take().unwrap().destroy();
     } else {
       let handler = handler.as_mut().unwrap();
-      state.handle_event(handler, event, cf);
-      if handler.should_exit(&state) {
+      window_state.handle_event(handler, event, cf);
+      if handler.should_exit(&window_state) {
         *cf = ControlFlow::Exit;
       };
     };
