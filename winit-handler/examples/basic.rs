@@ -2,16 +2,23 @@ extern crate winit;
 extern crate winit_handler;
 
 use winit::dpi::PhysicalSize;
-use winit::event::{ElementState, ScanCode, VirtualKeyCode};
+use winit::event::{ScanCode, VirtualKeyCode};
 use winit::event_loop::EventLoop;
 use winit::window::WindowBuilder;
-use winit_handler::{EventHandler, WindowState};
+use winit_handler::{EventHandler, KeyState, WindowState};
 
 struct Main;
 
 impl EventHandler<()> for Main {
-  fn keyboard_input(&mut self, _: &WindowState, state: ElementState, keycode: Option<VirtualKeyCode>, _: ScanCode) {
+  fn keyboard_input(&mut self, window_state: &WindowState, state: KeyState, keycode: Option<VirtualKeyCode>, _: ScanCode) {
     println!("Key {state:?}: {keycode:?}");
+
+    match (state, keycode) {
+      (KeyState::Pressed, Some(keycode)) => assert!(window_state.input().was_key_pressed(keycode)),
+      (KeyState::Repeating, Some(keycode)) => assert!(window_state.input().was_key_repeating(keycode)),
+      (KeyState::Released, Some(keycode)) => assert!(window_state.input().was_key_released(keycode)),
+      (_, None) => ()
+    };
   }
 
   fn should_exit(&self, window_state: &WindowState) -> bool {

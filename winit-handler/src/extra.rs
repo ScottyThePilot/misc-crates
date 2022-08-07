@@ -16,7 +16,7 @@ pub trait EventHandlerFallible<E: Error>: Sized + 'static {
   /// Called upon [`Event::MainEventsCleared`][winit::event::Event::MainEventsCleared].
   fn update(&mut self, window_state: &WindowState) -> Result<(), E> { Ok(()) }
   /// Called when an event from the keyboard has been received.
-  fn keyboard_input(&mut self, window_state: &WindowState, state: ElementState, keycode: Option<VirtualKeyCode>, scancode: ScanCode) -> Result<(), E> { Ok(()) }
+  fn keyboard_input(&mut self, window_state: &WindowState, state: KeyState, keycode: Option<VirtualKeyCode>, scancode: ScanCode) -> Result<(), E> { Ok(()) }
   /// Called when the window receives a unicode character.
   fn text_input(&mut self, window_state: &WindowState, ch: char) -> Result<(), E> { Ok(()) }
   /// Called when the cursor has moved on the window.
@@ -77,7 +77,7 @@ where H: EventHandlerFallible<E>, E: Error + 'static {
   handler_functions!{
     fn render(&mut self, window_state: &WindowState);
     fn update(&mut self, window_state: &WindowState);
-    fn keyboard_input(&mut self, window_state: &WindowState, state: ElementState, keycode: Option<VirtualKeyCode>, scancode: ScanCode);
+    fn keyboard_input(&mut self, window_state: &WindowState, state: KeyState, keycode: Option<VirtualKeyCode>, scancode: ScanCode);
     fn text_input(&mut self, window_state: &WindowState, ch: char);
     fn cursor_moved(&mut self, window_state: &WindowState, pos: (f32, f32));
     fn mouse_input(&mut self, window_state: &WindowState, state: ElementState, button: MouseButton);

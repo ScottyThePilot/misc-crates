@@ -25,7 +25,7 @@ pub trait EventHandler<T = ()>: Sized + 'static {
   /// Called when an event is sent from [`EventLoopProxy::send_event`][winit::event_loop::EventLoopProxy::send_event].
   fn user_event(&mut self, window_state: &WindowState, event: T) {}
   /// Called when an event from the keyboard has been received.
-  fn keyboard_input(&mut self, window_state: &WindowState, state: ElementState, keycode: Option<VirtualKeyCode>, scancode: ScanCode) {}
+  fn keyboard_input(&mut self, window_state: &WindowState, state: KeyState, keycode: Option<VirtualKeyCode>, scancode: ScanCode) {}
   /// Called when the window receives a unicode character.
   fn text_input(&mut self, window_state: &WindowState, ch: char) {}
   /// Called when the cursor has moved on the window.
@@ -63,6 +63,21 @@ fn element_state_to_bool(state: ElementState) -> bool {
     ElementState::Pressed => true,
     ElementState::Released => false
   }
+}
+
+macro_rules! find_key_action {
+  ($window_state:expr, $keycode:ident, $KeyState:pat) => {
+    $window_state.key_actions.iter()
+      .find(|&&action| match action {
+        KeyAction {
+          keycode: candidate,
+          state: $KeyState,
+          ..
+        } => candidate == $keycode,
+        _ => false
+      })
+      .is_some()
+  };
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -133,30 +148,17 @@ impl InputState {
 
   /// Checks whether or not the given key was pressed during the current frame.
   pub fn was_key_pressed(&self, keycode: VirtualKeyCode) -> bool {
-    self.key_actions.iter()
-      .find(|&&action| match action {
-        KeyAction {
-          keycode: candidate,
-          state: ElementState::Pressed,
-          ..
-        } => candidate == keycode,
-        _ => false
-      })
-      .is_some()
+    find_key_action!(self, keycode, KeyState::Pressed)
+  }
+
+  /// Checks whether or not the given key was repeated during the current frame.
+  pub fn was_key_repeating(&self, keycode: VirtualKeyCode) -> bool {
+    find_key_action!(self, keycode, KeyState::Repeating)
   }
 
   /// Checks whether or not the given key was released during the current frame.
   pub fn was_key_released(&self, keycode: VirtualKeyCode) -> bool {
-    self.key_actions.iter()
-      .find(|&&action| match action {
-        KeyAction {
-          keycode: candidate,
-          state: ElementState::Released,
-          ..
-        } => candidate == keycode,
-        _ => false
-      })
-      .is_some()
+    find_key_action!(self, keycode, KeyState::Released)
   }
 
   #[inline]
@@ -191,10 +193,15 @@ impl InputState {
     self.text.clear();
   }
 
-  fn handle_keyboard_input(&mut self, input: KeyboardInput) -> (ElementState, Option<VirtualKeyCode>, ScanCode) {
+  fn handle_keyboard_input(&mut self, input: KeyboardInput) -> (KeyState, Option<VirtualKeyCode>, ScanCode) {
     let KeyboardInput { scancode, state, virtual_keycode: keycode, .. } = input;
 
     let cond = element_state_to_bool(state);
+    let state = match state {
+      ElementState::Pressed if self[scancode] => KeyState::Repeating,
+      ElementState::Pressed => KeyState::Pressed,
+      ElementState::Released => KeyState::Released
+    };
 
     if let Some(keycode) = keycode {
       self.keys_held_keycode.set(keycode as usize, cond);
@@ -285,13 +292,31 @@ impl Index<MouseButton> for InputState {
 pub struct KeyAction {
   pub keycode: VirtualKeyCode,
   pub scancode: ScanCode,
-  pub state: ElementState
+  pub state: KeyState
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MouseAction {
   pub button: MouseButton,
   pub state: ElementState
+}
+
+/// Equivalent to [`ElementState`][winit::event::ElementState] but with an additional `Repeating` variant.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum KeyState {
+  Pressed,
+  Repeating,
+  Released
+}
+
+impl From<KeyState> for ElementState {
+  #[inline]
+  fn from(state: KeyState) -> Self {
+    match state {
+      KeyState::Pressed | KeyState::Repeating => ElementState::Pressed,
+      KeyState::Released => ElementState::Released
+    }
+  }
 }
 
 #[derive(Debug, Clone)]
