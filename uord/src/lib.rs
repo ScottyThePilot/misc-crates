@@ -20,31 +20,54 @@ impl<T> UOrd<T> {
     UOrd { min, max }
   }
 
+  /// Returns the lesser of the two elements, based on `T`'s `Ord` implementation.
   #[inline(always)]
-  pub fn min(self) -> T {
-    self.min
+  pub fn min(&self) -> &T {
+    &self.min
   }
 
+  /// Returns the greater of the two elements, based on `T`'s `Ord` implementation.
   #[inline(always)]
-  pub fn max(self) -> T {
-    self.max
+  pub fn max(&self) -> &T {
+    &self.max
   }
 
+  /// Returns `true` if one of the two contained elements equals `x`.
   #[inline]
   pub fn contains<Q: ?Sized>(&self, x: &Q) -> bool
   where T: Borrow<Q>, Q: Eq {
     self.min.borrow() == x || self.max.borrow() == x
   }
 
+  /// Returns the opposite elements when one of the contained elements matches the given value.
+  #[inline]
+  pub fn other<Q: ?Sized>(&self, x: &Q) -> Option<&T>
+  where T: Borrow<Q>, Q: Eq {
+    if self.max.borrow() == x {
+      Some(&self.min)
+    } else if self.min.borrow() == x {
+      Some(&self.max)
+    } else {
+      None
+    }
+  }
+
+  /// Returns true if the two elements of this pair are distinct (not equal).
   #[inline]
   pub fn is_distinct(&self) -> bool
   where T: Eq {
     self.min != self.max
   }
 
-  pub fn replace(self, from: &T, to: T) -> Self
-  where T: Ord + PartialEq + Clone {
-    self.map(|v| if v == *from { to.clone() } else { v })
+  /// Replaces one or both elements of this pair with a new value.
+  pub fn replace<Q: ?Sized>(&self, from: &Q, to: T) -> Self
+  where T: Ord + Borrow<Q> + Clone, Q: Eq {
+    self.map_ref(|v| if v.borrow() == from { to.clone() } else { v.clone() })
+  }
+
+  pub fn as_ref(&self) -> UOrd<&T>
+  where T: Ord {
+    UOrd::new(&self.min, &self.max)
   }
 
   #[inline(always)]
@@ -70,6 +93,11 @@ impl<T> UOrd<T> {
   pub fn map<U, F>(self, mut f: F) -> UOrd<U>
   where U: Ord, F: FnMut(T) -> U {
     UOrd::new(f(self.min), f(self.max))
+  }
+
+  pub fn map_ref<U, F>(&self, mut f: F) -> UOrd<U>
+  where U: Ord, F: FnMut(&T) -> U {
+    UOrd::new(f(&self.min), f(&self.max))
   }
 
   pub fn try_map<U, F>(self, mut f: F) -> Option<UOrd<U>>
