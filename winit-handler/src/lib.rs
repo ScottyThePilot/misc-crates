@@ -289,6 +289,7 @@ impl Index<MouseButton> for InputState {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct KeyAction {
   pub keycode: VirtualKeyCode,
   pub scancode: ScanCode,
@@ -296,6 +297,7 @@ pub struct KeyAction {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct MouseAction {
   pub button: MouseButton,
   pub state: ElementState
@@ -303,6 +305,7 @@ pub struct MouseAction {
 
 /// Equivalent to [`ElementState`][winit::event::ElementState] but with an additional `Repeating` variant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum KeyState {
   Pressed,
   Repeating,

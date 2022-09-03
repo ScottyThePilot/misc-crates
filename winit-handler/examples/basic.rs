@@ -10,8 +10,8 @@ use winit_handler::{EventHandler, KeyState, WindowState};
 struct Main;
 
 impl EventHandler<()> for Main {
-  fn keyboard_input(&mut self, window_state: &WindowState, state: KeyState, keycode: Option<VirtualKeyCode>, _: ScanCode) {
-    println!("Key {state:?}: {keycode:?}");
+  fn keyboard_input(&mut self, window_state: &WindowState, state: KeyState, keycode: Option<VirtualKeyCode>, scancode: ScanCode) {
+    println!("Key {:<10} {:<20} {scancode:#08x}", format!("{state:?}:"), format!("{keycode:?}"));
 
     match (state, keycode) {
       (KeyState::Pressed, Some(keycode)) => assert!(window_state.input().was_key_pressed(keycode)),
