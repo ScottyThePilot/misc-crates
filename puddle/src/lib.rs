@@ -1,4 +1,5 @@
 use std::marker::PhantomData;
+use std::sync::Arc;
 
 use crossbeam::channel::{Sender, Receiver, IntoIter as RecvIter, bounded};
 use threadpool::ThreadPool;
@@ -50,7 +51,7 @@ impl<E: Executor> Puddle<E> {
     self.threadpool.max_count()
   }
 
-  pub fn execute(&self, input: E::Input) {
+  pub fn execute(&self, input: E::Input) where E: Clone {
     let sender = self.sender.clone();
     let executor = self.executor.clone();
     self.threadpool.execute(move || {
@@ -59,15 +60,24 @@ impl<E: Executor> Puddle<E> {
     });
   }
 
+  pub fn execute_iter<I>(&self, iter: I)
+  where E: Clone, I: IntoIterator<Item = E::Input> {
+    for input in iter {
+      self.execute(input);
+    };
+  }
+
   #[inline]
-  pub fn finish(self) -> RecvIter<E::Output> {
+  pub fn finish(self) -> PuddleIter<E> {
     self.receiver.into_iter()
   }
 }
 
+pub type PuddleIter<E> = RecvIter<<E as Executor>::Output>;
+
 impl<E: Executor> IntoIterator for Puddle<E> {
   type Item = E::Output;
-  type IntoIter = RecvIter<E::Output>;
+  type IntoIter = PuddleIter<E>;
 
   #[inline]
   fn into_iter(self) -> Self::IntoIter {
@@ -77,12 +87,25 @@ impl<E: Executor> IntoIterator for Puddle<E> {
 
 
 
-pub trait Executor: Send + Sync + Clone + 'static {
+pub trait Executor: Send + Sync + 'static {
   type Input: Send + 'static;
   type Output: Send + 'static;
 
-  fn execute(self, input: Self::Input) -> Self::Output;
+  fn execute(&self, input: Self::Input) -> Self::Output;
 }
+
+impl<E, I, O> Executor for Arc<E>
+where E: Executor<Input = I, Output = O>, I: Send + 'static, O: Send + 'static {
+  type Input = I;
+  type Output = O;
+
+  #[inline]
+  fn execute(&self, input: I) -> O {
+    E::execute(self, input)
+  }
+}
+
+
 
 impl<I, O> Executor for fn(I) -> O
 where I: Send + 'static, O: Send + 'static {
@@ -90,7 +113,7 @@ where I: Send + 'static, O: Send + 'static {
   type Output = O;
 
   #[inline]
-  fn execute(self, input: I) -> O {
+  fn execute(&self, input: I) -> O {
     (self)(input)
   }
 }
@@ -123,7 +146,7 @@ where F: FnOnce() -> O + Send + 'static, O: Send + 'static {
   type Output = O;
 
   #[inline]
-  fn execute(self, input: F) -> O {
+  fn execute(&self, input: F) -> O {
     (input)()
   }
 }
