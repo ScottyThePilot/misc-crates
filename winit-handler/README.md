@@ -4,3 +4,12 @@ Introduces an event-handler style system for winit event loops as well as input 
 
 `winit-handler` depends on `winit = "*"`, which allows overriding the version with something else.
 It should function properly on most winit versions.
+
+## Behavior
+
+`winit-handler`'s `InputState` tracks key press and release pairs, but in order to avoid situations
+where an input pair is broken on lost focus (user releases button/key after unfocusing window), `winit-handler`
+completely resets the current input state whenever focus is lost.
+
+If a key down event is recieved while `InputState` already tracks that key as being pressed,
+it is reported as a key 'repeat' event.

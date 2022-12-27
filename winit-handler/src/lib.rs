@@ -4,6 +4,10 @@
 pub mod extra;
 
 use bitvec::array::BitArray;
+#[cfg(feature = "glutin")]
+use glutin::{PossiblyCurrent, WindowedContext};
+#[cfg(feature = "serde")]
+use serde::{Serialize, Deserialize};
 use winit::dpi::PhysicalSize;
 use winit::event::*;
 use winit::event_loop::{EventLoop, ControlFlow};
@@ -323,22 +327,63 @@ impl From<KeyState> for ElementState {
 }
 
 #[derive(Debug, Clone)]
+pub enum WindowStateContext {
+  #[cfg(feature = "glutin")]
+  Glutin(Rc<WindowedContext<PossiblyCurrent>>),
+  Winit(Rc<Window>)
+}
+
+impl WindowStateContext {
+  pub fn window(&self) -> &Window {
+    match self {
+      Self::Glutin(windowed_context) => windowed_context.window(),
+      Self::Winit(window) => window
+    }
+  }
+}
+
+impl From<Window> for WindowStateContext {
+  fn from(window: Window) -> Self {
+    WindowStateContext::Winit(Rc::new(window))
+  }
+}
+
+impl From<Rc<Window>> for WindowStateContext {
+  fn from(window: Rc<Window>) -> Self {
+    WindowStateContext::Winit(window)
+  }
+}
+
+impl From<WindowedContext<PossiblyCurrent>> for WindowStateContext {
+  fn from(window_context: WindowedContext<PossiblyCurrent>) -> Self {
+    WindowStateContext::Glutin(Rc::new(window_context))
+  }
+}
+
+impl From<Rc<WindowedContext<PossiblyCurrent>>> for WindowStateContext {
+  fn from(window_context: Rc<WindowedContext<PossiblyCurrent>>) -> Self {
+    WindowStateContext::Glutin(window_context)
+  }
+}
+
+#[derive(Debug, Clone)]
 pub struct WindowState {
   input_state: InputState,
   dropped_file: Option<PathBuf>,
   scale_factor: f64,
   window_size: PhysicalSize<u32>,
-  window: Rc<Window>
+  context: WindowStateContext
 }
 
 impl WindowState {
-  fn from_window(window: Rc<Window>) -> Self {
+  fn new(context: WindowStateContext) -> Self {
+    let window = context.window();
     WindowState {
       input_state: InputState::default(),
       dropped_file: None,
       scale_factor: window.scale_factor(),
       window_size: window.inner_size().into(),
-      window
+      context
     }
   }
 
@@ -369,19 +414,27 @@ impl WindowState {
 
   #[inline]
   pub fn window(&self) -> &Window {
-    &self.window
+    self.context.window()
   }
 
   #[inline]
-  pub fn window_ref(&self) -> Rc<Window> {
-    Rc::clone(&self.window)
+  pub fn context(&self) -> &WindowStateContext {
+    &self.context
+  }
+
+  #[cfg(feature = "glutin")]
+  pub fn context_glutin(&self) -> &WindowedContext<PossiblyCurrent> {
+    match &self.context {
+      WindowStateContext::Glutin(windowed_context) => &windowed_context,
+      WindowStateContext::Winit(..) => panic!("window state context does not contain a glutin windowed context")
+    }
   }
 
   /// Dispatches an event to a handler given an [`Event`][winit::event::Event].
   fn handle_event<T, H: EventHandler<T>>(&mut self, handler: &mut H, event: Event<T>, cf: &mut ControlFlow) {
     match event {
       Event::NewEvents(_) => self.reset(),
-      Event::WindowEvent { event, window_id } if self.window.id() == window_id => match event {
+      Event::WindowEvent { event, window_id } if self.window().id() == window_id => match event {
         WindowEvent::CloseRequested => {
           if handler.close(self) {
             *cf = ControlFlow::Exit;
@@ -436,12 +489,12 @@ impl WindowState {
         },
         _ => ()
       },
-      Event::RedrawRequested(window_id) if self.window.id() == window_id => {
+      Event::RedrawRequested(window_id) if self.window().id() == window_id => {
         handler.render(self);
       },
       Event::MainEventsCleared => {
         handler.update(self);
-        self.window.request_redraw();
+        self.window().request_redraw();
       },
       Event::UserEvent(t) => handler.user_event(self, t),
       _ => ()
@@ -449,9 +502,9 @@ impl WindowState {
   }
 }
 
-pub fn run<T, W, H>(event_loop: EventLoop<T>, window: W, handler: H) -> !
-where W: Into<Rc<Window>>, H: EventHandler<T> {
-  let mut window_state = WindowState::from_window(window.into());
+pub fn run<T, W, H>(event_loop: EventLoop<T>, source: W, handler: H) -> !
+where W: Into<WindowStateContext>, H: EventHandler<T> {
+  let mut window_state = WindowState::new(source.into());
   let mut handler = Some(handler);
   event_loop.run(move |event, _, cf| {
     if let Event::LoopDestroyed = event {
