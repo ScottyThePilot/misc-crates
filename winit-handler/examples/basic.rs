@@ -21,6 +21,10 @@ impl EventHandler<()> for Main {
     };
   }
 
+  fn cursor_moved(&mut self, _: &WindowState, pos: (f32, f32)) {
+    println!("Cursor Moved: {pos:?}");
+  }
+
   fn should_exit(&self, window_state: &WindowState) -> bool {
     window_state.input().is_key_held(VirtualKeyCode::Q) && window_state.input().modifiers().ctrl()
   }

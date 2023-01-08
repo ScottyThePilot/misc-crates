@@ -8,7 +8,7 @@ use bitvec::array::BitArray;
 use glutin::{PossiblyCurrent, WindowedContext};
 #[cfg(feature = "serde")]
 use serde::{Serialize, Deserialize};
-use winit::dpi::PhysicalSize;
+use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::*;
 use winit::event_loop::{EventLoop, ControlFlow};
 use winit::window::Window;
@@ -92,6 +92,7 @@ pub struct InputState {
   mouse_left_held: bool,
   mouse_right_held: bool,
   mouse_middle_held: bool,
+  has_not_moved: bool,
   key_actions: Vec<KeyAction>,
   keys_held_keycode: BitArray<[u32; KEYCODE_BITS / 32]>,
   keys_held_scancode: BitArray<[u32; SCANCODE_BITS / 32]>,
@@ -165,6 +166,18 @@ impl InputState {
     find_key_action!(self, keycode, KeyState::Released)
   }
 
+  /// Whether the mouse moved during the current frame.
+  pub fn was_moving(&self) -> bool {
+    self.cursor_pos != self.cursor_pos_prev
+  }
+
+  /// Whether the mouse has remained stationary since the mouse was pressed.
+  /// This can be useful for filtering between user intention in the event you
+  /// want to have different functionality between click + drag and click.
+  pub fn has_not_moved(&self) -> bool {
+    self.has_not_moved && !self.was_moving()
+  }
+
   #[inline]
   pub fn scroll_rel(&self) -> (f32, f32) {
     self.scroll_rel
@@ -193,6 +206,7 @@ impl InputState {
     self.cursor_pos_prev = self.cursor_pos;
     self.mouse_actions = Vec::with_capacity(4);
     self.key_actions = Vec::with_capacity(4);
+    self.has_not_moved = false;
     self.scroll_rel = (0.0, 0.0);
     self.text.clear();
   }
@@ -220,8 +234,10 @@ impl InputState {
   }
 
   fn handle_mouse_input(&mut self, state: ElementState, button: MouseButton) {
-    self.set_button_value(button, element_state_to_bool(state));
+    let cond = element_state_to_bool(state);
+    self.set_button_value(button, cond);
     self.mouse_actions.push(MouseAction { button, state });
+    self.has_not_moved = cond;
   }
 
   fn handle_mouse_wheel(&mut self, delta: MouseScrollDelta, scale_factor: f64) -> (f32, f32) {
@@ -246,6 +262,7 @@ impl Default for InputState {
       mouse_left_held: false,
       mouse_right_held: false,
       mouse_middle_held: false,
+      has_not_moved: false,
       key_actions: Vec::new(),
       keys_held_keycode: BitArray::default(),
       keys_held_scancode: BitArray::default(),
@@ -418,6 +435,11 @@ impl WindowState {
   }
 
   #[inline]
+  pub fn window_ref(&self) -> Rc<Window> {
+    Rc::clone(&self.window)
+  }
+
+  #[inline]
   pub fn context(&self) -> &WindowStateContext {
     &self.context
   }
@@ -427,6 +449,16 @@ impl WindowState {
     match &self.context {
       WindowStateContext::Glutin(windowed_context) => &windowed_context,
       WindowStateContext::Winit(..) => panic!("window state context does not contain a glutin windowed context")
+    }
+  }
+
+  /// Only returns `Some` when the given cursor position is within frame.
+  fn clip_cursor_pos(&self, position: PhysicalPosition<f64>) -> Option<(f32, f32)> {
+    let PhysicalSize { width, height } = self.window_size.cast::<f64>();
+    if position.x >= 0.0 && position.x <= width && position.y >= 0.0 && position.y <= height {
+      Some((position.x as f32, position.y as f32))
+    } else {
+      None
     }
   }
 
@@ -472,9 +504,11 @@ impl WindowState {
           handler.text_input(self, ch);
         },
         WindowEvent::CursorMoved { position, .. } => {
-          let position = (position.x as f32, position.y as f32);
-          self.input_state.cursor_pos = Some(position);
-          handler.cursor_moved(self, position);
+          if let Some(position) = self.clip_cursor_pos(position) {
+            self.input_state.cursor_pos = Some(position);
+            self.input_state.has_not_moved = false;
+            handler.cursor_moved(self, position);
+          };
         },
         WindowEvent::MouseInput { state, button, .. } => {
           self.input_state.handle_mouse_input(state, button);
