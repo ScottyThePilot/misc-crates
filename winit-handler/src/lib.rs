@@ -353,6 +353,7 @@ pub enum WindowStateContext {
 impl WindowStateContext {
   pub fn window(&self) -> &Window {
     match self {
+      #[cfg(feature = "glutin")]
       Self::Glutin(windowed_context) => windowed_context.window(),
       Self::Winit(window) => window
     }
@@ -371,12 +372,14 @@ impl From<Rc<Window>> for WindowStateContext {
   }
 }
 
+#[cfg(feature = "glutin")]
 impl From<WindowedContext<PossiblyCurrent>> for WindowStateContext {
   fn from(window_context: WindowedContext<PossiblyCurrent>) -> Self {
     WindowStateContext::Glutin(Rc::new(window_context))
   }
 }
 
+#[cfg(feature = "glutin")]
 impl From<Rc<WindowedContext<PossiblyCurrent>>> for WindowStateContext {
   fn from(window_context: Rc<WindowedContext<PossiblyCurrent>>) -> Self {
     WindowStateContext::Glutin(window_context)
@@ -432,11 +435,6 @@ impl WindowState {
   #[inline]
   pub fn window(&self) -> &Window {
     self.context.window()
-  }
-
-  #[inline]
-  pub fn window_ref(&self) -> Rc<Window> {
-    Rc::clone(&self.window)
   }
 
   #[inline]
