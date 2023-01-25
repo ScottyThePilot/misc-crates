@@ -11,7 +11,7 @@ use super::{IdContext, Id};
 
 pub type IdMapBuildHasher<T> = BuildNoHashHasher<Id<T>>;
 
-impl<T> IsEnabled for Id<T> {}
+impl<F: ?Sized> IsEnabled for Id<F> {}
 
 /// A hashmap with `Id<T>`s as opaque keys.
 pub struct IdMap<T> {

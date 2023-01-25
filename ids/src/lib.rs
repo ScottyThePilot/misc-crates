@@ -21,12 +21,12 @@ const ORDERING: AtomicOrdering = AtomicOrdering::SeqCst;
 /// "cross the beams" so to speak. This is optional though, and it
 /// defaults to the unit type, `()` as the default family.
 #[derive(Debug)]
-pub struct IdContext<F = ()> {
+pub struct IdContext<F: ?Sized = ()> {
   current_id: u64,
   _family: P<F>
 }
 
-impl<F> IdContext<F> {
+impl<F: ?Sized> IdContext<F> {
   #[cfg(feature = "serde")]
   const fn with_current_id(current_id: u64) -> IdContext<F> {
     IdContext { current_id, _family: P::new() }
@@ -55,7 +55,7 @@ impl<F> IdContext<F> {
   }
 }
 
-impl<F> Default for IdContext<F> {
+impl<F: ?Sized> Default for IdContext<F> {
   #[inline]
   fn default() -> IdContext<F> {
     IdContext::new()
@@ -64,26 +64,29 @@ impl<F> Default for IdContext<F> {
 
 
 
-pub struct Id<F = ()> {
+pub struct Id<F: ?Sized = ()> {
   id: u64,
   _family: P<F>
 }
 
-impl<F> Id<F> {
+impl<F: ?Sized> Id<F> {
+  #[inline]
   pub const fn from_raw(id: u64) -> Self {
     Id { id, _family: P::new() }
   }
 
+  #[inline]
   pub const fn into_raw(self) -> u64 {
     self.id
   }
 
+  #[inline]
   pub const fn cast<U>(self) -> Id<U> {
     Id::from_raw(self.id)
   }
 }
 
-impl<F> fmt::Debug for Id<F> {
+impl<F: ?Sized> fmt::Debug for Id<F> {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     f.debug_tuple("Id")
       .field(&self.id)
@@ -91,39 +94,39 @@ impl<F> fmt::Debug for Id<F> {
   }
 }
 
-impl<F> Clone for Id<F> {
+impl<F: ?Sized> Clone for Id<F> {
   #[inline]
   fn clone(&self) -> Self {
     Id::from_raw(self.id)
   }
 }
 
-impl<F> Copy for Id<F> {}
+impl<F: ?Sized> Copy for Id<F> {}
 
-impl<F> PartialEq for Id<F> {
+impl<F: ?Sized> PartialEq for Id<F> {
   #[inline]
   fn eq(&self, other: &Self) -> bool {
     self.id == other.id
   }
 }
 
-impl<F> Eq for Id<F> {}
+impl<F: ?Sized> Eq for Id<F> {}
 
-impl<F> PartialOrd for Id<F> {
+impl<F: ?Sized> PartialOrd for Id<F> {
   #[inline]
   fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
     PartialOrd::partial_cmp(&self.id, &other.id)
   }
 }
 
-impl<F> Ord for Id<F> {
+impl<F: ?Sized> Ord for Id<F> {
   #[inline]
   fn cmp(&self, other: &Self) -> Ordering {
     Ord::cmp(&self.id, &other.id)
   }
 }
 
-impl<F> Hash for Id<F> {
+impl<F: ?Sized> Hash for Id<F> {
   #[inline]
   fn hash<H: Hasher>(&self, state: &mut H) {
     state.write_u64(self.id);
@@ -131,7 +134,7 @@ impl<F> Hash for Id<F> {
 }
 
 #[cfg(feature = "serde")]
-impl<F> serde::Serialize for Id<F> {
+impl<F: ?Sized> serde::Serialize for Id<F> {
   fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
   where S: serde::Serializer {
     self.id.serialize(serializer)
@@ -139,7 +142,7 @@ impl<F> serde::Serialize for Id<F> {
 }
 
 #[cfg(feature = "serde")]
-impl<'de, F> serde::Deserialize<'de> for Id<F> {
+impl<'de, F: ?Sized> serde::Deserialize<'de> for Id<F> {
   fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
   where D: serde::Deserializer<'de> {
     u64::deserialize(deserializer).map(Id::from_raw)
@@ -152,12 +155,12 @@ impl<'de, F> serde::Deserialize<'de> for Id<F> {
 /// This is just like `IdContext`, but operates atomically
 /// and can be shared between threads.
 #[derive(Debug)]
-pub struct AtomicIdContext<F = ()> {
+pub struct AtomicIdContext<F: ?Sized = ()> {
   current_id: AtomicU64,
   _family: P<F>
 }
 
-impl<F> AtomicIdContext<F> {
+impl<F: ?Sized> AtomicIdContext<F> {
   pub const fn new() -> AtomicIdContext<F> {
     AtomicIdContext {
       current_id: AtomicU64::new(0),
@@ -171,7 +174,7 @@ impl<F> AtomicIdContext<F> {
   }
 }
 
-impl<F> Default for AtomicIdContext<F> {
+impl<F: ?Sized> Default for AtomicIdContext<F> {
   #[inline]
   fn default() -> AtomicIdContext<F> {
     AtomicIdContext::new()
