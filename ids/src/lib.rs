@@ -44,7 +44,7 @@ impl<F> IdContext<F> {
   pub fn next_id(&mut self) -> Id<F> {
     let id = self.current_id;
     self.current_id += 1;
-    Id { id, _family: P::new() }
+    Id::from_raw(id)
   }
 
   fn duplicate(&self) -> IdContext<F> {
@@ -69,6 +69,20 @@ pub struct Id<F = ()> {
   _family: P<F>
 }
 
+impl<F> Id<F> {
+  pub const fn from_raw(id: u64) -> Self {
+    Id { id, _family: P::new() }
+  }
+
+  pub const fn into_raw(self) -> u64 {
+    self.id
+  }
+
+  pub const fn cast<U>(self) -> Id<U> {
+    Id::from_raw(self.id)
+  }
+}
+
 impl<F> fmt::Debug for Id<F> {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     f.debug_tuple("Id")
@@ -80,7 +94,7 @@ impl<F> fmt::Debug for Id<F> {
 impl<F> Clone for Id<F> {
   #[inline]
   fn clone(&self) -> Self {
-    Id { id: self.id.clone(), _family: P::new() }
+    Id::from_raw(self.id)
   }
 }
 
@@ -120,7 +134,7 @@ impl<F> Hash for Id<F> {
 impl<F> serde::Serialize for Id<F> {
   fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
   where S: serde::Serializer {
-    serializer.serialize_newtype_struct("Id", &self.id)
+    self.id.serialize(serializer)
   }
 }
 
@@ -128,41 +142,7 @@ impl<F> serde::Serialize for Id<F> {
 impl<'de, F> serde::Deserialize<'de> for Id<F> {
   fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
   where D: serde::Deserializer<'de> {
-    struct IdVisitor<F>(PhantomData<F>);
-
-    impl<'de, F> serde::de::Visitor<'de> for IdVisitor<F> {
-      type Value = Id<F>;
-
-      fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str("tuple struct Id or u64")
-      }
-
-      #[inline]
-      fn visit_newtype_struct<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
-      where D: serde::Deserializer<'de>, {
-        Ok(Id {
-          id: <u64 as serde::Deserialize>::deserialize(deserializer)?,
-          _family: P::new()
-        })
-      }
-
-      #[inline]
-      fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-      where A: serde::de::SeqAccess<'de>, {
-        match seq.next_element::<u64>()? {
-          Some(id) => Ok(Id { id, _family: P::new() }),
-          None => Err(serde::de::Error::invalid_length(0, &"tuple struct Id with 1 element"))
-        }
-      }
-
-      #[inline]
-      fn visit_u64<E>(self, id: u64) -> Result<Self::Value, E>
-      where E: serde::de::Error {
-        Ok(Id { id, _family: P::new() })
-      }
-    }
-
-    deserializer.deserialize_newtype_struct("Id", IdVisitor(PhantomData))
+    u64::deserialize(deserializer).map(Id::from_raw)
   }
 }
 
@@ -187,7 +167,7 @@ impl<F> AtomicIdContext<F> {
 
   pub fn next_id(&self) -> Id<F> {
     let id = self.current_id.fetch_add(1, ORDERING);
-    Id { id, _family: P::new() }
+    Id::from_raw(id)
   }
 }
 
@@ -200,88 +180,34 @@ impl<F> Default for AtomicIdContext<F> {
 
 
 
-pub struct AtomicId<F = ()> {
-  id: u64,
-  _family: P<F>
-}
-
-impl<F> fmt::Debug for AtomicId<F> {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    f.debug_tuple("AtomicId")
-      .field(&self.id)
-      .finish()
-  }
-}
-
-impl<F> Clone for AtomicId<F> {
-  #[inline]
-  fn clone(&self) -> Self {
-    AtomicId { id: self.id.clone(), _family: P::new() }
-  }
-}
-
-impl<F> Copy for AtomicId<F> {}
-
-impl<F> PartialEq for AtomicId<F> {
-  #[inline]
-  fn eq(&self, other: &Self) -> bool {
-    self.id == other.id
-  }
-}
-
-impl<F> Eq for AtomicId<F> {}
-
-impl<F> PartialOrd for AtomicId<F> {
-  #[inline]
-  fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-    PartialOrd::partial_cmp(&self.id, &other.id)
-  }
-}
-
-impl<F> Ord for AtomicId<F> {
-  #[inline]
-  fn cmp(&self, other: &Self) -> Ordering {
-    Ord::cmp(&self.id, &other.id)
-  }
-}
-
-impl<F> Hash for AtomicId<F> {
-  #[inline]
-  fn hash<H: Hasher>(&self, state: &mut H) {
-    state.write_u64(self.id);
-  }
-}
-
-
-
 // This struct is necessary because `PhantomData` has stricter bounds
 // on its `Send` and `Sync` implementations than are necessary.
 #[repr(transparent)]
-struct P<T>(PhantomData<T>);
+struct P<T: ?Sized>(PhantomData<T>);
 
-impl<T> P<T> {
+impl<T: ?Sized> P<T> {
   #[inline]
   const fn new() -> Self {
     P(PhantomData)
   }
 }
 
-impl<F> fmt::Debug for P<F> {
+impl<F: ?Sized> fmt::Debug for P<F> {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     f.debug_tuple("Ph").finish()
   }
 }
 
-impl<T> Clone for P<T> {
+impl<T: ?Sized> Clone for P<T> {
   #[inline]
   fn clone(&self) -> Self {
     P(PhantomData)
   }
 }
 
-impl<T> Copy for P<T> {}
+impl<T: ?Sized> Copy for P<T> {}
 
-impl<T> Default for P<T> {
+impl<T: ?Sized> Default for P<T> {
   #[inline]
   fn default() -> Self {
     P(PhantomData)
@@ -289,5 +215,5 @@ impl<T> Default for P<T> {
 }
 
 // SAFETY: `P` is a zero-sized type
-unsafe impl<T> Send for P<T> {}
-unsafe impl<T> Sync for P<T> {}
+unsafe impl<T: ?Sized> Send for P<T> {}
+unsafe impl<T: ?Sized> Sync for P<T> {}

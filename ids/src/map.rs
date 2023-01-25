@@ -231,7 +231,7 @@ where T: serde::Deserialize<'de> {
       }
     }
 
-    deserializer.deserialize_newtype_struct("Id", IdMapVisitor(std::marker::PhantomData))
+    deserializer.deserialize_map(IdMapVisitor(std::marker::PhantomData))
   }
 }
 
