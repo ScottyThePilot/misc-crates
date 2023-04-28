@@ -1,5 +1,4 @@
 use std::collections::hash_map;
-use std::iter::FusedIterator;
 use std::ops::Index;
 use std::fmt;
 
@@ -14,6 +13,7 @@ pub type IdMapBuildHasher<T> = BuildNoHashHasher<Id<T>>;
 impl<F: ?Sized> IsEnabled for Id<F> {}
 
 /// A hashmap with `Id<T>`s as opaque keys.
+#[derive(Clone)]
 pub struct IdMap<T> {
   context: IdContext<T>,
   map: NoHashMap<Id<T>, T>
@@ -39,28 +39,33 @@ impl<T> IdMap<T> {
   }
 
   #[inline]
-  pub fn ids(&self) -> Ids<'_, T> {
+  pub fn ids(&self) -> Ids<T> {
     Ids { inner: self.map.keys() }
   }
 
   #[inline]
-  pub fn values(&self) -> Values<'_, T> {
+  pub fn values(&self) -> Values<T> {
     Values { inner: self.map.values() }
   }
 
   #[inline]
-  pub fn values_mut(&mut self) -> ValuesMut<'_, T> {
+  pub fn values_mut(&mut self) -> ValuesMut<T> {
     ValuesMut { inner: self.map.values_mut() }
   }
 
   #[inline]
-  pub fn iter(&self) -> Iter<'_, T> {
-    Iter { inner: self.map.iter() }
+  pub fn into_values(self) -> IntoValues<T> {
+    IntoValues { inner: self.map.into_values() }
   }
 
   #[inline]
-  pub fn iter_mut(&mut self) -> IterMut<'_, T> {
-    IterMut { inner: self.map.iter_mut() }
+  pub fn iter(&self) -> Iter<T> {
+    self.into_iter()
+  }
+
+  #[inline]
+  pub fn iter_mut(&mut self) -> IterMut<T> {
+    self.into_iter()
   }
 
   #[inline]
@@ -74,7 +79,7 @@ impl<T> IdMap<T> {
   }
 
   #[inline]
-  pub fn drain(&mut self) -> Drain<'_, T> {
+  pub fn drain(&mut self) -> Drain<T> {
     self.context.current_id = 0;
     Drain { inner: self.map.drain() }
   }
@@ -160,15 +165,6 @@ impl<T: fmt::Debug> fmt::Debug for IdMap<T> {
   }
 }
 
-impl<T: Clone> Clone for IdMap<T> {
-  fn clone(&self) -> Self {
-    IdMap {
-      context: self.context.duplicate(),
-      map: self.map.clone()
-    }
-  }
-}
-
 impl<T> Default for IdMap<T> {
   #[inline]
   fn default() -> Self {
@@ -182,6 +178,36 @@ impl<T> Index<Id<T>> for IdMap<T> {
   #[inline]
   fn index(&self, id: Id<T>) -> &Self::Output {
     self.get(id).expect("no entry found for id")
+  }
+}
+
+impl<'a, T> IntoIterator for &'a IdMap<T> {
+  type Item = (Id<T>, &'a T);
+  type IntoIter = Iter<'a, T>;
+
+  #[inline]
+  fn into_iter(self) -> Self::IntoIter {
+    Iter { inner: self.map.iter() }
+  }
+}
+
+impl<'a, T> IntoIterator for &'a mut IdMap<T> {
+  type Item = (Id<T>, &'a mut T);
+  type IntoIter = IterMut<'a, T>;
+
+  #[inline]
+  fn into_iter(self) -> Self::IntoIter {
+    IterMut { inner: self.map.iter_mut() }
+  }
+}
+
+impl<T> IntoIterator for IdMap<T> {
+  type Item = (Id<T>, T);
+  type IntoIter = IntoIter<T>;
+
+  #[inline]
+  fn into_iter(self) -> Self::IntoIter {
+    IntoIter { inner: self.map.into_iter() }
   }
 }
 
@@ -235,90 +261,87 @@ where T: serde::Deserialize<'de> {
   }
 }
 
-
-
-macro_rules! impl_iterator_struct {
-  ($Iter:ident, $Item:ty) => {
-    impl_iterator_struct!(@ $Iter, $Item, s -> s.inner.next());
-  };
-  ($Iter:ident, $Item:ty, $map:expr) => {
-    impl_iterator_struct!(@ $Iter, $Item, s -> s.inner.next().map($map));
-  };
-  (@ $Iter:ident, $Item:ty, $self:ident -> $next:expr) => {
-    impl<T: fmt::Debug> fmt::Debug for $Iter<'_, T> {
-      #[inline]
-      fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Debug::fmt(&self.inner, f)
-      }
+macro_rules! impl_iterator {
+  {
+    $(#[$attr:meta])*
+    $vis:vis struct $Type:ident <$($lt:lifetime),* $(,)? $($gn:ident),* $(,)?>,
+    $inner:ident: $InnerType:ty, $Item:ty, $map:expr
+    $(, where $($w:tt)*)? $(,)?
+  } => {
+    $(#[$attr])*
+    $vis struct $Type<$($lt,)* $($gn,)*> {
+      $inner: $InnerType
     }
 
-    impl<'a, T> Iterator for $Iter<'a, T> {
+    impl<$($lt,)* $($gn,)*> std::iter::Iterator for $Type<$($lt,)* $($gn,)*> $(where $($w)*)? {
       type Item = $Item;
 
       #[inline]
-      fn next(&mut self) -> Option<$Item> {
-        let $self = self;
-        $next
+      fn next(&mut self) -> Option<Self::Item> {
+        self.$inner.next().map($map)
       }
 
       #[inline]
       fn size_hint(&self) -> (usize, Option<usize>) {
-        self.inner.size_hint()
+        self.$inner.size_hint()
       }
     }
 
-    impl<T> ExactSizeIterator for $Iter<'_, T> {
+    impl<$($lt,)* $($gn,)*> std::iter::ExactSizeIterator for $Type<$($lt,)* $($gn,)*> $(where $($w)*)? {
       #[inline]
       fn len(&self) -> usize {
-        self.inner.len()
+        self.$inner.len()
       }
     }
 
-    impl<T> FusedIterator for $Iter<'_, T> {}
+    impl<$($lt,)* $($gn,)*> std::iter::FusedIterator for $Type<$($lt,)* $($gn,)*> $(where $($w)*)? {}
   };
 }
 
-#[repr(transparent)]
-#[derive(Clone)]
-pub struct Ids<'a, T: 'a> {
-  inner: hash_map::Keys<'a, Id<T>, T>
+impl_iterator! {
+  #[derive(Debug, Clone)] pub struct Ids<'a, T>,
+  inner: hash_map::Keys<'a, Id<T>, T>,
+  Id<T>, |id| *id
 }
 
-impl_iterator_struct!(Ids, Id<T>, |id| *id);
-
-#[repr(transparent)]
-#[derive(Clone)]
-pub struct Values<'a, T: 'a> {
-  inner: hash_map::Values<'a, Id<T>, T>
+impl_iterator! {
+  #[derive(Debug, Clone)] pub struct Values<'a, T>,
+  inner: hash_map::Values<'a, Id<T>, T>,
+  &'a T, std::convert::identity
 }
 
-impl_iterator_struct!(Values, &'a T);
-
-#[repr(transparent)]
-pub struct ValuesMut<'a, T: 'a> {
-  inner: hash_map::ValuesMut<'a, Id<T>, T>
+impl_iterator! {
+  #[derive(Debug)] pub struct ValuesMut<'a, T>,
+  inner: hash_map::ValuesMut<'a, Id<T>, T>,
+  &'a mut T, std::convert::identity
 }
 
-impl_iterator_struct!(ValuesMut, &'a mut T);
-
-#[repr(transparent)]
-#[derive(Clone)]
-pub struct Iter<'a, T: 'a> {
-  inner: hash_map::Iter<'a, Id<T>, T>
+impl_iterator! {
+  #[derive(Debug)] pub struct IntoValues<T>,
+  inner: hash_map::IntoValues<Id<T>, T>,
+  T, std::convert::identity
 }
 
-impl_iterator_struct!(Iter, (Id<T>, &'a T), |(id, v)| (*id, v));
-
-#[repr(transparent)]
-pub struct IterMut<'a, T: 'a> {
-  inner: hash_map::IterMut<'a, Id<T>, T>
+impl_iterator! {
+  #[derive(Debug, Clone)] pub struct Iter<'a, T>,
+  inner: hash_map::Iter<'a, Id<T>, T>,
+  (Id<T>, &'a T), |(id, v)| (*id, v)
 }
 
-impl_iterator_struct!(IterMut, (Id<T>, &'a mut T), |(id, v)| (*id, v));
-
-#[repr(transparent)]
-pub struct Drain<'a, T: 'a> {
-  inner: hash_map::Drain<'a, Id<T>, T>
+impl_iterator! {
+  #[derive(Debug)] pub struct IterMut<'a, T>,
+  inner: hash_map::IterMut<'a, Id<T>, T>,
+  (Id<T>, &'a mut T), |(id, v)| (*id, v)
 }
 
-impl_iterator_struct!(Drain, T, |(_, v)| v);
+impl_iterator! {
+  #[derive(Debug)] pub struct IntoIter<T>,
+  inner: hash_map::IntoIter<Id<T>, T>,
+  (Id<T>, T), std::convert::identity
+}
+
+impl_iterator! {
+  #[derive(Debug)] pub struct Drain<'a, T>,
+  inner: hash_map::Drain<'a, Id<T>, T>,
+  T, |(_, v)| v
+}

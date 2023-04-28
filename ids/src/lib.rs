@@ -1,4 +1,5 @@
 //! This crate provides opaque ID generators and types.
+
 #[cfg(feature = "map")]
 pub mod map;
 
@@ -16,28 +17,27 @@ const ORDERING: AtomicOrdering = AtomicOrdering::SeqCst;
 
 
 /// A context for spawning unique IDs.
-/// The type parameter is to allow you to specify a "family" so that
-/// IDs can be impossible to mix up, as they may cause issues if you
-/// "cross the beams" so to speak. This is optional though, and it
-/// defaults to the unit type, `()` as the default family.
+#[repr(transparent)]
 #[derive(Debug)]
 pub struct IdContext<F: ?Sized = ()> {
   current_id: u64,
-  _family: P<F>
+  family: PhantomData<F>
 }
 
 impl<F: ?Sized> IdContext<F> {
-  #[cfg(feature = "serde")]
-  const fn with_current_id(current_id: u64) -> IdContext<F> {
-    IdContext { current_id, _family: P::new() }
+  /// Creates a new ID context with an from which it should start counting from.
+  #[inline]
+  pub const fn with_current_id(current_id: u64) -> IdContext<F> {
+    IdContext {
+      current_id,
+      family: PhantomData
+    }
   }
 
   /// Creates a new ID context.
+  #[inline]
   pub const fn new() -> IdContext<F> {
-    IdContext {
-      current_id: 0,
-      _family: P::new()
-    }
+    Self::with_current_id(0)
   }
 
   /// Spawns the next unique ID for this context.
@@ -46,11 +46,14 @@ impl<F: ?Sized> IdContext<F> {
     self.current_id += 1;
     Id::from_raw(id)
   }
+}
 
-  fn duplicate(&self) -> IdContext<F> {
+impl<F: ?Sized> Clone for IdContext<F> {
+  #[inline]
+  fn clone(&self) -> Self {
     IdContext {
       current_id: self.current_id,
-      _family: P::new()
+      family: PhantomData
     }
   }
 }
@@ -62,17 +65,21 @@ impl<F: ?Sized> Default for IdContext<F> {
   }
 }
 
+unsafe impl<F: ?Sized> Send for IdContext<F> {}
+unsafe impl<F: ?Sized> Sync for IdContext<F> {}
 
 
+
+#[repr(transparent)]
 pub struct Id<F: ?Sized = ()> {
   id: u64,
-  _family: P<F>
+  family: PhantomData<F>
 }
 
 impl<F: ?Sized> Id<F> {
   #[inline]
   pub const fn from_raw(id: u64) -> Self {
-    Id { id, _family: P::new() }
+    Id { id, family: PhantomData }
   }
 
   #[inline]
@@ -133,8 +140,12 @@ impl<F: ?Sized> Hash for Id<F> {
   }
 }
 
+unsafe impl<F: ?Sized> Send for Id<F> {}
+unsafe impl<F: ?Sized> Sync for Id<F> {}
+
 #[cfg(feature = "serde")]
 impl<F: ?Sized> serde::Serialize for Id<F> {
+  #[inline]
   fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
   where S: serde::Serializer {
     self.id.serialize(serializer)
@@ -143,6 +154,7 @@ impl<F: ?Sized> serde::Serialize for Id<F> {
 
 #[cfg(feature = "serde")]
 impl<'de, F: ?Sized> serde::Deserialize<'de> for Id<F> {
+  #[inline]
   fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
   where D: serde::Deserializer<'de> {
     u64::deserialize(deserializer).map(Id::from_raw)
@@ -151,21 +163,29 @@ impl<'de, F: ?Sized> serde::Deserialize<'de> for Id<F> {
 
 
 
-/// An atomic ID context.
-/// This is just like `IdContext`, but operates atomically
-/// and can be shared between threads.
+/// A atomic context for spawning unique IDs.
+/// This is just like `IdContext`, but operates atomically and can be shared between threads.
+#[repr(transparent)]
 #[derive(Debug)]
 pub struct AtomicIdContext<F: ?Sized = ()> {
   current_id: AtomicU64,
-  _family: P<F>
+  family: PhantomData<F>
 }
 
 impl<F: ?Sized> AtomicIdContext<F> {
-  pub const fn new() -> AtomicIdContext<F> {
+  /// Creates a new ID context with an from which it should start counting from.
+  #[inline]
+  pub const fn with_current_id(current_id: u64) -> AtomicIdContext<F> {
     AtomicIdContext {
-      current_id: AtomicU64::new(0),
-      _family: P::new()
+      current_id: AtomicU64::new(current_id),
+      family: PhantomData
     }
+  }
+
+  /// Creates a new ID context.
+  #[inline]
+  pub const fn new() -> AtomicIdContext<F> {
+    Self::with_current_id(0)
   }
 
   pub fn next_id(&self) -> Id<F> {
@@ -181,42 +201,5 @@ impl<F: ?Sized> Default for AtomicIdContext<F> {
   }
 }
 
-
-
-// This struct is necessary because `PhantomData` has stricter bounds
-// on its `Send` and `Sync` implementations than are necessary.
-#[repr(transparent)]
-struct P<T: ?Sized>(PhantomData<T>);
-
-impl<T: ?Sized> P<T> {
-  #[inline]
-  const fn new() -> Self {
-    P(PhantomData)
-  }
-}
-
-impl<F: ?Sized> fmt::Debug for P<F> {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    f.debug_tuple("Ph").finish()
-  }
-}
-
-impl<T: ?Sized> Clone for P<T> {
-  #[inline]
-  fn clone(&self) -> Self {
-    P(PhantomData)
-  }
-}
-
-impl<T: ?Sized> Copy for P<T> {}
-
-impl<T: ?Sized> Default for P<T> {
-  #[inline]
-  fn default() -> Self {
-    P(PhantomData)
-  }
-}
-
-// SAFETY: `P` is a zero-sized type
-unsafe impl<T: ?Sized> Send for P<T> {}
-unsafe impl<T: ?Sized> Sync for P<T> {}
+unsafe impl<F: ?Sized> Send for AtomicIdContext<F> {}
+unsafe impl<F: ?Sized> Sync for AtomicIdContext<F> {}
