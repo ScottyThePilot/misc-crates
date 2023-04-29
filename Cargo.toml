@@ -1,5 +1,6 @@
 [workspace]
 members = [
+  "graph",
   "ids",
   "offset-int",
   "puddle",

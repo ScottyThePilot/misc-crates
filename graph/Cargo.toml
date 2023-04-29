@@ -1,0 +1,13 @@
+[package]
+name = "graph"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ids = { path = "../ids" }
+uord = { path = "../uord" }
+nohash-hasher = "0.2.0"
+
+[features]
+default = []
+serde = ["ids/serde", "uord/serde"]
