@@ -10,6 +10,9 @@ serde = { version = "1.0", optional = true }
 uord = { path = "../uord" }
 nohash-hasher = "0.2.0"
 
+[dev-dependencies]
+ron = { version = "0.8" }
+
 [features]
 default = []
 serde = ["dep:serde", "ids/serde", "uord/serde"]

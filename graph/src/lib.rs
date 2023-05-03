@@ -81,7 +81,14 @@ impl<Node, Link> Graph<Node, Link> {
     })
   }
 
+  /// Returns the number of nodes that a given node is linked to.
+  /// Returns `None` if no node exists for the given `Id`.
+  pub fn node_neighbors_count(&self, id: Id<Node>) -> Option<usize> {
+    self.get_node_neighbors(id).map(IdSet::len)
+  }
+
   /// Returns a list of nodes that the given node is linked to.
+  /// Returns `None` if no node exists for the given `Id`.
   pub fn get_node_neighbors(&self, id: Id<Node>) -> Option<&IdSet<Node>> {
     self.nodes.get(&id).map(|inner_node| &inner_node.neighbors)
   }
@@ -211,6 +218,38 @@ impl<Node, Link> Graph<Node, Link> {
   pub fn links_ids(&self) -> LinksIds<Node, Link> {
     LinksIds { inner: self.links.keys() }
   }
+
+  #[cfg(feature = "serde")]
+  fn from_raw(mut nodes: IntMap<Id<Node>, NodeInner<Node>>, links: HashMap<UOrd<Id<Node>>, Link>) -> Self {
+    fn maximize(acc: &mut Option<u64>, value: u64) {
+      let acc = acc.get_or_insert(value);
+      if value > *acc { *acc = value };
+    }
+
+    let mut highest_id = None;
+    for (&id, node_inner) in nodes.iter_mut() {
+      let neighbors = links.keys().copied()
+        .filter_map(|pair| pair.other(&id).copied());
+      node_inner.neighbors.clear();
+      node_inner.neighbors.extend(neighbors);
+      maximize(&mut highest_id, id.into_raw());
+    };
+
+    for id in links.keys().copied().flatten() {
+      maximize(&mut highest_id, id.into_raw());
+    };
+
+    let current_id = nodes.keys().copied()
+      .chain(links.keys().copied().flatten())
+      .map(Id::into_raw).max().map_or(0, |max| max + 1);
+    let id_context = IdContext::with_current_id(current_id);
+
+    Graph {
+      id_context,
+      nodes,
+      links
+    }
+  }
 }
 
 impl<Node, Link> Extend<(UOrd<Id<Node>>, Link)> for Graph<Node, Link> {
@@ -247,6 +286,158 @@ impl<Node: fmt::Debug> fmt::Debug for NodeInner<Node> {
   #[inline]
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     <Node as fmt::Debug>::fmt(&self.value, f)
+  }
+}
+
+#[cfg(feature = "serde")]
+impl<Node> serde::Serialize for NodeInner<Node>
+where Node: serde::Serialize {
+  #[inline]
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where S: serde::Serializer {
+    self.value.serialize(serializer)
+  }
+}
+
+#[cfg(feature = "serde")]
+impl<'de, Node> serde::Deserialize<'de> for NodeInner<Node>
+where Node: serde::Deserialize<'de> {
+  #[inline]
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+  where D: serde::Deserializer<'de> {
+    Node::deserialize(deserializer).map(|value| NodeInner {
+      value, neighbors: IntSet::default()
+    })
+  }
+}
+
+#[cfg(feature = "serde")]
+impl<Node, Link> serde::Serialize for Graph<Node, Link>
+where Node: serde::Serialize, Link: serde::Serialize {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where S: serde::Serializer {
+    let mut state = serializer.serialize_struct("Graph", 2)?;
+    serde::ser::SerializeStruct::serialize_field(&mut state, "nodes", &self.nodes)?;
+    serde::ser::SerializeStruct::serialize_field(&mut state, "links", &self.links)?;
+    serde::ser::SerializeStruct::end(state)
+  }
+}
+
+#[cfg(feature = "serde")]
+impl<'de, Node, Link> serde::Deserialize<'de> for Graph<Node, Link>
+where Node: serde::Deserialize<'de>, Link: serde::Deserialize<'de> {
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+  where D: serde::Deserializer<'de> {
+    enum GraphField {
+      Nodes,
+      Links
+    }
+
+    impl<'de> serde::de::Deserialize<'de> for GraphField {
+      #[inline]
+      fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+      where D: serde::Deserializer<'de> {
+        deserializer.deserialize_identifier(GraphFieldVisitor)
+      }
+    }
+
+    struct GraphFieldVisitor;
+
+    impl<'de> serde::de::Visitor<'de> for GraphFieldVisitor {
+      type Value = GraphField;
+
+      fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("field identifier")
+      }
+
+      fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
+      where E: serde::de::Error {
+        match value {
+          0u64 => Ok(GraphField::Nodes),
+          1u64 => Ok(GraphField::Links),
+          _ => Err(serde::de::Error::invalid_value(
+            serde::de::Unexpected::Unsigned(value),
+            &"field index 0 <= i < 2"
+          ))
+        }
+      }
+
+      #[inline]
+      fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+      where E: serde::de::Error {
+        match value {
+          "nodes" => Ok(GraphField::Nodes),
+          "links" => Ok(GraphField::Links),
+          _ => Err(serde::de::Error::unknown_field(&value, FIELDS))
+        }
+      }
+
+      fn visit_bytes<E>(self, value: &[u8]) -> Result<Self::Value, E>
+      where E: serde::de::Error {
+        match value {
+          b"nodes" => Ok(GraphField::Nodes),
+          b"links" => Ok(GraphField::Links),
+          _ => {
+            let value = String::from_utf8_lossy(value);
+            Err(serde::de::Error::unknown_field(&value, FIELDS))
+          }
+        }
+      }
+    }
+
+    type GraphNodes<Node> = IntMap<Id<Node>, NodeInner<Node>>;
+    type GraphLinks<Node, Link> = HashMap<UOrd<Id<Node>>, Link>;
+
+    struct GraphVisitor<'de, Node, Link> {
+      marker: std::marker::PhantomData<Graph<Node, Link>>,
+      lifetime: std::marker::PhantomData<&'de ()>
+    }
+
+    impl<'de, Node, Link> serde::de::Visitor<'de> for GraphVisitor<'de, Node, Link>
+    where Node: serde::Deserialize<'de>, Link: serde::Deserialize<'de> {
+      type Value = Graph<Node, Link>;
+
+      fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("struct Graph")
+      }
+
+      fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+      where A: serde::de::SeqAccess<'de> {
+        let nodes = seq.next_element::<GraphNodes<Node>>()?
+          .ok_or(serde::de::Error::invalid_length(0usize, &"struct Graph with 2 elements"))?;
+        let links = seq.next_element::<GraphLinks<Node, Link>>()?
+          .ok_or(serde::de::Error::invalid_length(1usize, &"struct Graph with 2 elements"))?;
+        Ok(Graph::from_raw(nodes, links))
+      }
+
+      fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+      where A: serde::de::MapAccess<'de> {
+        let mut nodes = None;
+        let mut links = None;
+        while let Some(key) = map.next_key::<GraphField>()? {
+          match key {
+            GraphField::Nodes => {
+              if nodes.is_some() { return Err(serde::de::Error::duplicate_field("nodes")) };
+              nodes = Some(map.next_value::<GraphNodes<Node>>()?);
+            },
+            GraphField::Links => {
+              if links.is_some() { return Err(serde::de::Error::duplicate_field("links")) };
+              links = Some(map.next_value::<GraphLinks<Node, Link>>()?);
+            }
+          }
+        };
+
+        let nodes = nodes.ok_or(serde::de::Error::missing_field("nodes"))?;
+        let links = links.ok_or(serde::de::Error::missing_field("links"))?;
+        Ok(Graph::from_raw(nodes, links))
+      }
+    }
+
+    const FIELDS: &[&str] = &["nodes", "links"];
+    deserializer.deserialize_struct("Graph", FIELDS, GraphVisitor {
+      marker: std::marker::PhantomData,
+      lifetime: std::marker::PhantomData
+    })
   }
 }
 
@@ -290,13 +481,13 @@ macro_rules! impl_iterator {
 impl_iterator! {
   #[derive(Debug, Clone)] pub struct Nodes<'a, Node>,
   inner: std::collections::hash_map::Iter<'a, Id<Node>, NodeInner<Node>>,
-  (&'a Node, Id<Node>), |(&id, NodeInner { value, .. })| (value, id)
+  (Id<Node>, &'a Node), |(&id, NodeInner { value, .. })| (id, value)
 }
 
 impl_iterator! {
   #[derive(Debug)] pub struct NodesMut<'a, Node>,
   inner: std::collections::hash_map::IterMut<'a, Id<Node>, NodeInner<Node>>,
-  (&'a mut Node, Id<Node>), |(&id, NodeInner { value, .. })| (value, id)
+  (Id<Node>, &'a mut Node), |(&id, NodeInner { value, .. })| (id, value)
 }
 
 impl_iterator! {
@@ -320,13 +511,13 @@ impl_iterator! {
 impl_iterator! {
   #[derive(Debug, Clone)] pub struct Links<'a, Node, Link>,
   inner: std::collections::hash_map::Iter<'a, UOrd<Id<Node>>, Link>,
-  (&'a Link, UOrd<Id<Node>>), |(&id, value)| (value, id)
+  (UOrd<Id<Node>>, &'a Link), |(&id, value)| (id, value)
 }
 
 impl_iterator! {
   #[derive(Debug)] pub struct LinksMut<'a, Node, Link>,
   inner: std::collections::hash_map::IterMut<'a, UOrd<Id<Node>>, Link>,
-  (&'a mut Link, UOrd<Id<Node>>), |(&id, value)| (value, id)
+  (UOrd<Id<Node>>, &'a mut Link), |(&id, value)| (id, value)
 }
 
 impl_iterator! {
