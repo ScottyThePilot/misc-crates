@@ -2,6 +2,10 @@
 name = "uord"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.66"
 
 [dependencies]
 serde = { version = "1.0", optional = true }
+
+[features]
+serde = ["dep:serde"]

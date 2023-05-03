@@ -2,12 +2,14 @@
 name = "graph"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.66"
 
 [dependencies]
 ids = { path = "../ids" }
+serde = { version = "1.0", optional = true }
 uord = { path = "../uord" }
 nohash-hasher = "0.2.0"
 
 [features]
 default = []
-serde = ["ids/serde", "uord/serde"]
+serde = ["dep:serde", "ids/serde", "uord/serde"]

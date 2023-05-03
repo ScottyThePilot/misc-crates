@@ -2,7 +2,6 @@
 members = [
   "graph",
   "ids",
-  "offset-int",
   "puddle",
   "slice-ext",
   "uord",
