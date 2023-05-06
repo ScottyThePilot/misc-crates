@@ -4,16 +4,16 @@ extern crate nohash_hasher;
 
 use ids::IdContext;
 use nohash_hasher::{IntMap, IntSet};
+#[doc(no_inline)] pub use ids::Id;
+#[doc(no_inline)] pub use uord::UOrd;
 
-pub use ids::Id;
-pub use uord::UOrd;
+use crate::iter::*;
 
 use std::collections::HashMap;
 use std::iter::Extend;
 use std::fmt;
 
 pub type IdSet<F> = IntSet<Id<F>>;
-pub type IdPair<F> = UOrd<Id<F>>;
 
 
 
@@ -46,7 +46,7 @@ impl<Node, Link> Graph<Node, Link> {
   /// Adds a new link to the graph, placing the given value inside it.
   /// Returns the value of the previous link if the link already existed.
   /// Panics when attempting to link a node to itself.
-  pub fn add_link(&mut self, value: Link, nodes: impl Into<IdPair<Node>>) -> Option<Link> {
+  pub fn add_link(&mut self, value: Link, nodes: impl Into<UOrd<Id<Node>>>) -> Option<Link> {
     let nodes = nodes.into();
     assert!(nodes.is_distinct(), "graph node may not link to itself");
     if let Some(previous) = self.links.insert(nodes, value) {
@@ -73,7 +73,7 @@ impl<Node, Link> Graph<Node, Link> {
   }
 
   /// Tries to remove a link from the graph.
-  pub fn remove_link(&mut self, nodes: impl Into<IdPair<Node>>) -> Option<Link> {
+  pub fn remove_link(&mut self, nodes: impl Into<UOrd<Id<Node>>>) -> Option<Link> {
     let nodes = nodes.into();
     self.links.remove(&nodes).map(|value| {
       self.unlink_node_neighbors(nodes);
@@ -129,7 +129,7 @@ impl<Node, Link> Graph<Node, Link> {
 
   /// Returns true if the given nodes are linked, false otherwise.
   #[inline]
-  pub fn contains_link(&self, id: impl Into<IdPair<Node>>) -> bool {
+  pub fn contains_link(&self, id: impl Into<UOrd<Id<Node>>>) -> bool {
     self.links.contains_key(&id.into())
   }
 
@@ -159,13 +159,13 @@ impl<Node, Link> Graph<Node, Link> {
 
   /// Gets a reference to the value of a link.
   #[inline]
-  pub fn get_link_value(&self, id: impl Into<IdPair<Node>>) -> Option<&Link> {
+  pub fn get_link_value(&self, id: impl Into<UOrd<Id<Node>>>) -> Option<&Link> {
     self.links.get(&id.into())
   }
 
   /// Gets a mutable reference to the value of a link.
   #[inline]
-  pub fn get_link_value_mut(&mut self, id: impl Into<IdPair<Node>>) -> Option<&mut Link> {
+  pub fn get_link_value_mut(&mut self, id: impl Into<UOrd<Id<Node>>>) -> Option<&mut Link> {
     self.links.get_mut(&id.into())
   }
 
@@ -276,6 +276,15 @@ impl<Node: fmt::Debug, Link: fmt::Debug> fmt::Debug for Graph<Node, Link> {
   }
 }
 
+impl<Node: PartialEq, Link: PartialEq> PartialEq for Graph<Node, Link> {
+  #[inline]
+  fn eq(&self, other: &Self) -> bool {
+    self.nodes == other.nodes && self.links == other.links
+  }
+}
+
+impl<Node: Eq, Link: Eq> Eq for Graph<Node, Link> {}
+
 #[derive(Clone)]
 struct NodeInner<Node> {
   value: Node,
@@ -288,6 +297,15 @@ impl<Node: fmt::Debug> fmt::Debug for NodeInner<Node> {
     <Node as fmt::Debug>::fmt(&self.value, f)
   }
 }
+
+impl<Node: PartialEq> PartialEq for NodeInner<Node> {
+  #[inline]
+  fn eq(&self, other: &Self) -> bool {
+    self.value == other.value
+  }
+}
+
+impl<Node: Eq> Eq for NodeInner<Node> {}
 
 #[cfg(feature = "serde")]
 impl<Node> serde::Serialize for NodeInner<Node>
@@ -441,99 +459,104 @@ where Node: serde::Deserialize<'de>, Link: serde::Deserialize<'de> {
   }
 }
 
-macro_rules! impl_iterator {
-  {
-    $(#[$attr:meta])*
-    $vis:vis struct $Type:ident <$($lt:lifetime),* $(,)? $($gn:ident),* $(,)?>,
-    $inner:ident: $InnerType:ty, $Item:ty, $map:expr
-    $(, where $($w:tt)*)? $(,)?
-  } => {
-    $(#[$attr])*
-    $vis struct $Type<$($lt,)* $($gn,)*> {
-      $inner: $InnerType
-    }
+pub mod iter {
+  use ids::Id;
+  use uord::UOrd;
 
-    impl<$($lt,)* $($gn,)*> std::iter::Iterator for $Type<$($lt,)* $($gn,)*> $(where $($w)*)? {
-      type Item = $Item;
-
-      #[inline]
-      fn next(&mut self) -> Option<Self::Item> {
-        self.$inner.next().map($map)
+  macro_rules! impl_iterator {
+    {
+      $(#[$attr:meta])*
+      $vis:vis struct $Type:ident <$($lt:lifetime),* $(,)? $($gn:ident),* $(,)?>,
+      $inner:ident: $InnerType:ty, $Item:ty, $map:expr
+      $(, where $($w:tt)*)? $(,)?
+    } => {
+      $(#[$attr])*
+      $vis struct $Type<$($lt,)* $($gn,)*> {
+        pub(crate) $inner: $InnerType
       }
 
-      #[inline]
-      fn size_hint(&self) -> (usize, Option<usize>) {
-        self.$inner.size_hint()
+      impl<$($lt,)* $($gn,)*> std::iter::Iterator for $Type<$($lt,)* $($gn,)*> $(where $($w)*)? {
+        type Item = $Item;
+
+        #[inline]
+        fn next(&mut self) -> Option<Self::Item> {
+          self.$inner.next().map($map)
+        }
+
+        #[inline]
+        fn size_hint(&self) -> (usize, Option<usize>) {
+          self.$inner.size_hint()
+        }
       }
-    }
 
-    impl<$($lt,)* $($gn,)*> std::iter::ExactSizeIterator for $Type<$($lt,)* $($gn,)*> $(where $($w)*)? {
-      #[inline]
-      fn len(&self) -> usize {
-        self.$inner.len()
+      impl<$($lt,)* $($gn,)*> std::iter::ExactSizeIterator for $Type<$($lt,)* $($gn,)*> $(where $($w)*)? {
+        #[inline]
+        fn len(&self) -> usize {
+          self.$inner.len()
+        }
       }
-    }
 
-    impl<$($lt,)* $($gn,)*> std::iter::FusedIterator for $Type<$($lt,)* $($gn,)*> $(where $($w)*)? {}
-  };
-}
+      impl<$($lt,)* $($gn,)*> std::iter::FusedIterator for $Type<$($lt,)* $($gn,)*> $(where $($w)*)? {}
+    };
+  }
 
-impl_iterator! {
-  #[derive(Debug, Clone)] pub struct Nodes<'a, Node>,
-  inner: std::collections::hash_map::Iter<'a, Id<Node>, NodeInner<Node>>,
-  (Id<Node>, &'a Node), |(&id, NodeInner { value, .. })| (id, value)
-}
+  impl_iterator! {
+    #[derive(Debug, Clone)] pub struct Nodes<'a, Node>,
+    inner: std::collections::hash_map::Iter<'a, Id<Node>, super::NodeInner<Node>>,
+    (Id<Node>, &'a Node), |(&id, super::NodeInner { value, .. })| (id, value)
+  }
 
-impl_iterator! {
-  #[derive(Debug)] pub struct NodesMut<'a, Node>,
-  inner: std::collections::hash_map::IterMut<'a, Id<Node>, NodeInner<Node>>,
-  (Id<Node>, &'a mut Node), |(&id, NodeInner { value, .. })| (id, value)
-}
+  impl_iterator! {
+    #[derive(Debug)] pub struct NodesMut<'a, Node>,
+    inner: std::collections::hash_map::IterMut<'a, Id<Node>, super::NodeInner<Node>>,
+    (Id<Node>, &'a mut Node), |(&id, super::NodeInner { value, .. })| (id, value)
+  }
 
-impl_iterator! {
-  #[derive(Debug, Clone)] pub struct NodesValues<'a, Node>,
-  inner: std::collections::hash_map::Values<'a, Id<Node>, NodeInner<Node>>,
-  &'a Node, |NodeInner { value, .. }| value
-}
+  impl_iterator! {
+    #[derive(Debug, Clone)] pub struct NodesValues<'a, Node>,
+    inner: std::collections::hash_map::Values<'a, Id<Node>, super::NodeInner<Node>>,
+    &'a Node, |super::NodeInner { value, .. }| value
+  }
 
-impl_iterator! {
-  #[derive(Debug)] pub struct NodesValuesMut<'a, Node>,
-  inner: std::collections::hash_map::ValuesMut<'a, Id<Node>, NodeInner<Node>>,
-  &'a mut Node, |NodeInner { value, .. }| value
-}
+  impl_iterator! {
+    #[derive(Debug)] pub struct NodesValuesMut<'a, Node>,
+    inner: std::collections::hash_map::ValuesMut<'a, Id<Node>, super::NodeInner<Node>>,
+    &'a mut Node, |super::NodeInner { value, .. }| value
+  }
 
-impl_iterator! {
-  #[derive(Debug, Clone)] pub struct NodesIds<'a, Node>,
-  inner: std::collections::hash_map::Keys<'a, Id<Node>, NodeInner<Node>>,
-  Id<Node>, |&id| id
-}
+  impl_iterator! {
+    #[derive(Debug, Clone)] pub struct NodesIds<'a, Node>,
+    inner: std::collections::hash_map::Keys<'a, Id<Node>, super::NodeInner<Node>>,
+    Id<Node>, |&id| id
+  }
 
-impl_iterator! {
-  #[derive(Debug, Clone)] pub struct Links<'a, Node, Link>,
-  inner: std::collections::hash_map::Iter<'a, UOrd<Id<Node>>, Link>,
-  (UOrd<Id<Node>>, &'a Link), |(&id, value)| (id, value)
-}
+  impl_iterator! {
+    #[derive(Debug, Clone)] pub struct Links<'a, Node, Link>,
+    inner: std::collections::hash_map::Iter<'a, UOrd<Id<Node>>, Link>,
+    (UOrd<Id<Node>>, &'a Link), |(&id, value)| (id, value)
+  }
 
-impl_iterator! {
-  #[derive(Debug)] pub struct LinksMut<'a, Node, Link>,
-  inner: std::collections::hash_map::IterMut<'a, UOrd<Id<Node>>, Link>,
-  (UOrd<Id<Node>>, &'a mut Link), |(&id, value)| (id, value)
-}
+  impl_iterator! {
+    #[derive(Debug)] pub struct LinksMut<'a, Node, Link>,
+    inner: std::collections::hash_map::IterMut<'a, UOrd<Id<Node>>, Link>,
+    (UOrd<Id<Node>>, &'a mut Link), |(&id, value)| (id, value)
+  }
 
-impl_iterator! {
-  #[derive(Debug, Clone)] pub struct LinksValues<'a, Node, Link>,
-  inner: std::collections::hash_map::Values<'a, UOrd<Id<Node>>, Link>,
-  &'a Link, std::convert::identity
-}
+  impl_iterator! {
+    #[derive(Debug, Clone)] pub struct LinksValues<'a, Node, Link>,
+    inner: std::collections::hash_map::Values<'a, UOrd<Id<Node>>, Link>,
+    &'a Link, std::convert::identity
+  }
 
-impl_iterator! {
-  #[derive(Debug)] pub struct LinksValuesMut<'a, Node, Link>,
-  inner: std::collections::hash_map::ValuesMut<'a, UOrd<Id<Node>>, Link>,
-  &'a mut Link, std::convert::identity
-}
+  impl_iterator! {
+    #[derive(Debug)] pub struct LinksValuesMut<'a, Node, Link>,
+    inner: std::collections::hash_map::ValuesMut<'a, UOrd<Id<Node>>, Link>,
+    &'a mut Link, std::convert::identity
+  }
 
-impl_iterator! {
-  #[derive(Debug, Clone)] pub struct LinksIds<'a, Node, Link>,
-  inner: std::collections::hash_map::Keys<'a, UOrd<Id<Node>>, Link>,
-  UOrd<Id<Node>>, |&id| id
+  impl_iterator! {
+    #[derive(Debug, Clone)] pub struct LinksIds<'a, Node, Link>,
+    inner: std::collections::hash_map::Keys<'a, UOrd<Id<Node>>, Link>,
+    UOrd<Id<Node>>, |&id| id
+  }
 }
