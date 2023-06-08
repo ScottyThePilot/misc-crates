@@ -22,13 +22,13 @@ impl<T> UOrd<T> {
 
   /// Returns the lesser of the two elements, based on `T`'s `Ord` implementation.
   #[inline(always)]
-  pub fn min(&self) -> &T {
+  pub const fn min(&self) -> &T {
     &self.min
   }
 
   /// Returns the greater of the two elements, based on `T`'s `Ord` implementation.
   #[inline(always)]
-  pub fn max(&self) -> &T {
+  pub const fn max(&self) -> &T {
     &self.max
   }
 
@@ -62,16 +62,20 @@ impl<T> UOrd<T> {
   /// Replaces one or both elements of this pair with a new value.
   pub fn replace<Q: ?Sized>(&self, from: &Q, to: T) -> Self
   where T: Ord + Borrow<Q> + Clone, Q: Eq {
-    self.map_ref(|v| if v.borrow() == from { to.clone() } else { v.clone() })
+    self.as_ref().map(|v| if v.borrow() == from { to.clone() } else { v.clone() })
   }
 
-  pub fn as_ref(&self) -> UOrd<&T>
-  where T: Ord {
-    UOrd::new(&self.min, &self.max)
+  #[inline]
+  pub const fn as_ref(&self) -> UOrd<&T> {
+    // &T's Ord impl is the same as T, so this should be OK
+    UOrd {
+      min: &self.min,
+      max: &self.max
+    }
   }
 
   #[inline(always)]
-  pub fn as_tuple(&self) -> (&T, &T) {
+  pub const fn as_tuple(&self) -> (&T, &T) {
     (&self.min, &self.max)
   }
 
@@ -81,7 +85,7 @@ impl<T> UOrd<T> {
   }
 
   #[inline(always)]
-  pub fn as_array(&self) -> [&T; 2] {
+  pub const fn as_array(&self) -> [&T; 2] {
     [&self.min, &self.max]
   }
 
@@ -95,19 +99,49 @@ impl<T> UOrd<T> {
     UOrd::new(f(self.min), f(self.max))
   }
 
-  pub fn map_ref<U, F>(&self, mut f: F) -> UOrd<U>
-  where U: Ord, F: FnMut(&T) -> U {
-    UOrd::new(f(&self.min), f(&self.max))
-  }
-
-  pub fn try_map<U, F>(self, mut f: F) -> Option<UOrd<U>>
+  pub fn try_map_opt<U, F>(self, mut f: F) -> Option<UOrd<U>>
   where U: Ord, F: FnMut(T) -> Option<U> {
     Some(UOrd::new(f(self.min)?, f(self.max)?))
+  }
+
+  pub fn try_map<U, E, F>(self, mut f: F) -> Result<UOrd<U>, E>
+  where U: Ord, F: FnMut(T) -> Result<U, E> {
+    Ok(UOrd::new(f(self.min)?, f(self.max)?))
+  }
+
+  #[inline]
+  pub fn convert<U>(self) -> UOrd<U>
+  where U: Ord, T: Into<U> {
+    self.map(T::into)
+  }
+
+  #[inline]
+  pub fn try_convert<U>(self) -> Result<UOrd<U>, T::Error>
+  where U: Ord, T: TryInto<U> {
+    self.try_map(T::try_into)
+  }
+
+  pub fn both<F>(&self, mut f: F) -> bool
+  where F: FnMut(&T) -> bool {
+    f(&self.min) && f(&self.max)
+  }
+
+  pub fn either<F>(&self, mut f: F) -> bool
+  where F: FnMut(&T) -> bool {
+    f(&self.min) || f(&self.max)
   }
 
   #[inline]
   pub fn iter(&self) -> UOrdIter<T> {
     self.into_iter()
+  }
+
+  pub fn inspect<F>(&mut self, mut f: F)
+  where T: Ord, F: FnMut(&mut T, &mut T) {
+    f(&mut self.min, &mut self.max);
+    if let Ordering::Greater = Ord::cmp(&self.min, &self.max) {
+      std::mem::swap(&mut self.min, &mut self.max);
+    };
   }
 }
 
@@ -150,10 +184,23 @@ impl<T: Ord> From<(T, T)> for UOrd<T> {
   }
 }
 
-impl<T: Ord> Into<(T, T)> for UOrd<T> {
+impl<T: Ord> From<[T; 2]> for UOrd<T> {
   #[inline(always)]
-  fn into(self) -> (T, T) {
-    self.into_tuple()
+  fn from(value: [T; 2]) -> UOrd<T> {
+    let [a, b] = value;
+    UOrd::new(a, b)
+  }
+}
+
+impl<T: Ord> From<UOrd<T>> for (T, T) {
+  fn from(value: UOrd<T>) -> Self {
+    value.into_tuple()
+  }
+}
+
+impl<T: Ord> From<UOrd<T>> for [T; 2] {
+  fn from(value: UOrd<T>) -> Self {
+    value.into_array()
   }
 }
 
