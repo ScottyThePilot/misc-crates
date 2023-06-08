@@ -1,11 +1,11 @@
 //! A trait-based event handler for [`winit`][winit].
 #![warn(missing_copy_implementations, missing_debug_implementations)]
 
+pub extern crate winit;
+
 pub mod extra;
 
 use bitvec::array::BitArray;
-#[cfg(feature = "glutin")]
-use glutin::{PossiblyCurrent, WindowedContext};
 #[cfg(feature = "serde")]
 use serde::{Serialize, Deserialize};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
@@ -28,6 +28,8 @@ pub trait EventHandler<T = ()>: Sized + 'static {
   fn update(&mut self, window_state: &WindowState) {}
   /// Called when an event is sent from [`EventLoopProxy::send_event`][winit::event_loop::EventLoopProxy::send_event].
   fn user_event(&mut self, window_state: &WindowState, event: T) {}
+  /// Called upon [`Event::DeviceEvent`][winit::event::Event::DeviceEvent].
+  fn device_event(&mut self, window_state: &WindowState, id: DeviceId, event: DeviceEvent) {}
   /// Called when an event from the keyboard has been received.
   fn keyboard_input(&mut self, window_state: &WindowState, state: KeyState, keycode: Option<VirtualKeyCode>, scancode: ScanCode) {}
   /// Called when the window receives a unicode character.
@@ -343,48 +345,7 @@ impl From<KeyState> for ElementState {
   }
 }
 
-#[derive(Debug, Clone)]
-pub enum WindowStateContext {
-  #[cfg(feature = "glutin")]
-  Glutin(Rc<WindowedContext<PossiblyCurrent>>),
-  Winit(Rc<Window>)
-}
 
-impl WindowStateContext {
-  pub fn window(&self) -> &Window {
-    match self {
-      #[cfg(feature = "glutin")]
-      Self::Glutin(windowed_context) => windowed_context.window(),
-      Self::Winit(window) => window
-    }
-  }
-}
-
-impl From<Window> for WindowStateContext {
-  fn from(window: Window) -> Self {
-    WindowStateContext::Winit(Rc::new(window))
-  }
-}
-
-impl From<Rc<Window>> for WindowStateContext {
-  fn from(window: Rc<Window>) -> Self {
-    WindowStateContext::Winit(window)
-  }
-}
-
-#[cfg(feature = "glutin")]
-impl From<WindowedContext<PossiblyCurrent>> for WindowStateContext {
-  fn from(window_context: WindowedContext<PossiblyCurrent>) -> Self {
-    WindowStateContext::Glutin(Rc::new(window_context))
-  }
-}
-
-#[cfg(feature = "glutin")]
-impl From<Rc<WindowedContext<PossiblyCurrent>>> for WindowStateContext {
-  fn from(window_context: Rc<WindowedContext<PossiblyCurrent>>) -> Self {
-    WindowStateContext::Glutin(window_context)
-  }
-}
 
 #[derive(Debug, Clone)]
 pub struct WindowState {
@@ -392,18 +353,17 @@ pub struct WindowState {
   dropped_file: Option<PathBuf>,
   scale_factor: f64,
   window_size: PhysicalSize<u32>,
-  context: WindowStateContext
+  window: Rc<Window>
 }
 
 impl WindowState {
-  fn new(context: WindowStateContext) -> Self {
-    let window = context.window();
+  fn new(window: Rc<Window>) -> Self {
     WindowState {
       input_state: InputState::default(),
       dropped_file: None,
       scale_factor: window.scale_factor(),
       window_size: window.inner_size().into(),
-      context
+      window
     }
   }
 
@@ -434,20 +394,12 @@ impl WindowState {
 
   #[inline]
   pub fn window(&self) -> &Window {
-    self.context.window()
+    &self.window
   }
 
   #[inline]
-  pub fn context(&self) -> &WindowStateContext {
-    &self.context
-  }
-
-  #[cfg(feature = "glutin")]
-  pub fn context_glutin(&self) -> &WindowedContext<PossiblyCurrent> {
-    match &self.context {
-      WindowStateContext::Glutin(windowed_context) => &windowed_context,
-      WindowStateContext::Winit(..) => panic!("window state context does not contain a glutin windowed context")
-    }
+  pub fn window_ref(&self) -> Rc<Window> {
+    Rc::clone(&self.window)
   }
 
   /// Only returns `Some` when the given cursor position is within frame.
@@ -467,12 +419,10 @@ impl WindowState {
       Event::WindowEvent { event, window_id } if self.window().id() == window_id => match event {
         WindowEvent::CloseRequested => {
           if handler.close(self) {
-            *cf = ControlFlow::Exit;
+            *cf = ControlFlow::ExitWithCode(0);
           };
         },
-        WindowEvent::Destroyed => {
-          *cf = ControlFlow::Exit;
-        },
+        WindowEvent::Destroyed => (),
         WindowEvent::Focused(false) => {
           self.input_state = InputState::default();
           handler.focused(self, false);
@@ -521,6 +471,9 @@ impl WindowState {
         },
         _ => ()
       },
+      Event::DeviceEvent { device_id, event } => {
+        handler.device_event(self, device_id, event);
+      },
       Event::RedrawRequested(window_id) if self.window().id() == window_id => {
         handler.render(self);
       },
@@ -534,15 +487,24 @@ impl WindowState {
   }
 }
 
+macro_rules! unwrap_unreachable {
+  ($expr:expr $(,)?) => (match $expr {
+    Some(v) => v, None => unreachable!()
+  });
+  ($expr:expr, $($arg:tt)*) => (match $expr {
+    Some(v) => v, None => unreachable!($($arg)*)
+  });
+}
+
 pub fn run<T, W, H>(event_loop: EventLoop<T>, source: W, handler: H) -> !
-where W: Into<WindowStateContext>, H: EventHandler<T> {
+where W: Into<Rc<Window>>, H: EventHandler<T> {
   let mut window_state = WindowState::new(source.into());
   let mut handler = Some(handler);
   event_loop.run(move |event, _, cf| {
     if let Event::LoopDestroyed = event {
-      handler.take().unwrap().destroy();
+      unwrap_unreachable!(handler.take()).destroy();
     } else {
-      let handler = handler.as_mut().unwrap();
+      let handler = unwrap_unreachable!(handler.as_mut());
       window_state.handle_event(handler, event, cf);
       if handler.should_exit(&window_state) {
         *cf = ControlFlow::Exit;
