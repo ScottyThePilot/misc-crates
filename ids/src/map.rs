@@ -239,7 +239,7 @@ where T: serde::Deserialize<'de> {
 
       fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
       where A: serde::de::MapAccess<'de> {
-        let size = serde::__private::size_hint::cautious(map.size_hint());
+        let size = map.size_hint().unwrap_or(0).min(4096);
         let mut values = NoHashMap::with_capacity_and_hasher(size, Default::default());
         let mut current_id: u64 = 0;
 
