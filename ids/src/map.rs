@@ -12,7 +12,12 @@ pub type IdMapBuildHasher<T> = BuildNoHashHasher<Id<T>>;
 
 impl<F: ?Sized> IsEnabled for Id<F> {}
 
-/// A hashmap with `Id<T>`s as opaque keys.
+/// A hashmap with [`Id`]s as opaque keys.
+///
+/// If you would like an [`IdContext`] to be paired with this, use [`IdMap`] instead.
+pub type IdHashMap<T> = NoHashMap<Id<T>, T>;
+
+/// A hashmap with [`Id`]s as opaque keys alongside an [`IdContext`] for producing them.
 #[derive(Clone)]
 pub struct IdMap<T> {
   context: IdContext<T>,

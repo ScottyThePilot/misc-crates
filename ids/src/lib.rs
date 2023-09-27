@@ -1,5 +1,7 @@
 //! This crate provides opaque ID generators and types.
 
+pub extern crate nohash_hasher;
+
 #[cfg(feature = "map")]
 pub mod map;
 
