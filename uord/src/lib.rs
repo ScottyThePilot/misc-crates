@@ -1,7 +1,8 @@
-use std::cmp::Ordering;
-use std::borrow::Borrow;
-use std::hash::{Hash, Hasher};
-use std::fmt;
+#![no_std]
+use core::cmp::Ordering;
+use core::borrow::Borrow;
+use core::hash::{Hash, Hasher};
+use core::fmt;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -140,13 +141,13 @@ impl<T> UOrd<T> {
   where T: Ord, F: FnMut(&mut T, &mut T) {
     f(&mut self.min, &mut self.max);
     if let Ordering::Greater = Ord::cmp(&self.min, &self.max) {
-      std::mem::swap(&mut self.min, &mut self.max);
+      core::mem::swap(&mut self.min, &mut self.max);
     };
   }
 }
 
-type UOrdIter<'a, T> = std::array::IntoIter<&'a T, 2>;
-type UOrdIntoIter<T> = std::array::IntoIter<T, 2>;
+type UOrdIter<'a, T> = core::array::IntoIter<&'a T, 2>;
+type UOrdIntoIter<T> = core::array::IntoIter<T, 2>;
 
 impl<T> IntoIterator for UOrd<T> {
   type Item = T;
@@ -237,7 +238,7 @@ impl<'de, T> serde::Deserialize<'de> for UOrd<T>
 where T: Ord + serde::Deserialize<'de> {
   fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
   where D: serde::Deserializer<'de> {
-    struct UOrdVisitor<T>(std::marker::PhantomData<UOrd<T>>);
+    struct UOrdVisitor<T>(core::marker::PhantomData<UOrd<T>>);
 
     impl<'de, T> serde::de::Visitor<'de> for UOrdVisitor<T>
     where T: Ord + serde::Deserialize<'de> {
@@ -263,6 +264,6 @@ where T: Ord + serde::Deserialize<'de> {
       }
     }
 
-    deserializer.deserialize_tuple(2, UOrdVisitor(std::marker::PhantomData))
+    deserializer.deserialize_tuple(2, UOrdVisitor(core::marker::PhantomData))
   }
 }
