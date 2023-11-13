@@ -1,5 +1,6 @@
 [workspace]
 members = [
+  "defy",
   "graph",
   "ids",
   "puddle",
