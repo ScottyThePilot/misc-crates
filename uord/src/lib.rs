@@ -91,6 +91,13 @@ impl<T> UOrd<T> {
   }
 
   #[inline(always)]
+  pub const fn as_array_ref(&self) -> &[T; 2] {
+    // SAFETY: UOrd<T> is repr(C) and contains 2 elements, so it is identical to [T; 2]
+    debug_assert!(core::mem::size_of::<UOrd<T>>() == core::mem::size_of::<[T; 2]>());
+    unsafe { &*(self as *const UOrd<T> as *const [T; 2]) }
+  }
+
+  #[inline(always)]
   pub fn into_array(self) -> [T; 2] {
     [self.min, self.max]
   }
