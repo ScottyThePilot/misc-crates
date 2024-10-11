@@ -222,6 +222,20 @@ impl<T: PartialEq> PartialEq for UOrd<T> {
 
 impl<T: Eq> Eq for UOrd<T> {}
 
+impl<T: PartialOrd> PartialOrd for UOrd<T> {
+  #[inline]
+  fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+    self.as_array_ref().partial_cmp(other.as_array_ref())
+  }
+}
+
+impl<T: Ord> Ord for UOrd<T> {
+  #[inline]
+  fn cmp(&self, other: &Self) -> Ordering {
+    self.as_array_ref().cmp(other.as_array_ref())
+  }
+}
+
 impl<T: Hash> Hash for UOrd<T> {
   #[inline]
   fn hash<H: Hasher>(&self, state: &mut H) {
