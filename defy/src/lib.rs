@@ -102,6 +102,7 @@ impl<T, E> Print for Result<T, E>
 where E: Display {
   type Output = Option<T>;
 
+  #[track_caller]
   #[inline]
   fn print(self) -> Self::Output {
     maybe!(self, error, println!("{error}"))
@@ -123,31 +124,37 @@ pub trait Log: Print {
 #[cfg(feature = "log")]
 impl<T, E> Log for Result<T, E>
 where E: Display {
+  #[track_caller]
   #[inline]
   fn log(self, target: &str, level: Level) -> Self::Output {
     maybe!(self, message, log::log!(target: target, level, "{message}"))
   }
 
+  #[track_caller]
   #[inline]
   fn log_error(self) -> Self::Output {
     maybe!(self, message, log::error!("{message}"))
   }
 
+  #[track_caller]
   #[inline]
   fn log_warn(self) -> Self::Output {
     maybe!(self, message, log::warn!("{message}"))
   }
 
+  #[track_caller]
   #[inline]
   fn log_info(self) -> Self::Output {
     maybe!(self, message, log::info!("{message}"))
   }
 
+  #[track_caller]
   #[inline]
   fn log_debug(self) -> Self::Output {
     maybe!(self, message, log::debug!("{message}"))
   }
 
+  #[track_caller]
   #[inline]
   fn log_trace(self) -> Self::Output {
     maybe!(self, message, log::trace!("{message}"))

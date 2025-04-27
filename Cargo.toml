@@ -6,6 +6,5 @@ members = [
   "puddle",
   "slice-ext",
   "uord",
-  "winit-handler",
   "yggdrasil"
 ]
