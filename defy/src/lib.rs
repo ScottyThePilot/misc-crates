@@ -113,11 +113,17 @@ where E: Display {
 /// the error variant to be split off and sent to any of the macros provided by the [`log`] crate.
 #[cfg(feature = "log")]
 pub trait Log: Print {
+  #[track_caller]
   fn log(self, target: &str, level: Level) -> Self::Output;
+  #[track_caller]
   fn log_error(self) -> Self::Output;
+  #[track_caller]
   fn log_warn(self) -> Self::Output;
+  #[track_caller]
   fn log_info(self) -> Self::Output;
+  #[track_caller]
   fn log_debug(self) -> Self::Output;
+  #[track_caller]
   fn log_trace(self) -> Self::Output;
 }
 
