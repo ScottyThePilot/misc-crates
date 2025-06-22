@@ -1,0 +1,13 @@
+[package]
+name = "build-info"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+build-info-macros = { path = "../build-info-macros" }
+chrono = { version = "0.4", optional = true }
+
+[features]
+default = []
+chrono = ["build-info-macros/chrono", "dep:chrono"]
+git = ["build-info-macros/git"]
