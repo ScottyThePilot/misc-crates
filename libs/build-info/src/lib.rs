@@ -20,11 +20,17 @@ pub use build_info_macros::{
   build_datetime_local_fixed,
   build_datetime_local_fixed_format,
   build_datetime_local_fixed_rfc2822,
-  build_datetime_local_fixed_rfc3339,
-  build_datetime_naive,
-  build_datetime_naive_format,
-  build_date_naive,
-  build_date_naive_format,
-  build_time_naive,
-  build_time_naive_format
+  build_datetime_local_fixed_rfc3339
+};
+
+#[cfg(all(feature = "chrono", feature = "git"))]
+pub use build_info_macros::{
+  git_last_commit_datetime_utc,
+  git_last_commit_datetime_utc_format,
+  git_last_commit_datetime_utc_rfc2822,
+  git_last_commit_datetime_utc_rfc3339,
+  git_last_commit_datetime_local_fixed,
+  git_last_commit_datetime_local_fixed_format,
+  git_last_commit_datetime_local_fixed_rfc2822,
+  git_last_commit_datetime_local_fixed_rfc3339
 };
