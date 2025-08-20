@@ -7,25 +7,25 @@ pub trait SliceExt<T> {
 }
 
 impl<T> SliceExt<T> for [T] {
-  /// Shortcut method to [`array::try_from`][https://doc.rust-lang.org/std/primitive.array.html#method.try_from-3].
+  /// Shortcut method to [`array::try_from`][<https://doc.rust-lang.org/std/primitive.array.html#method.try_from-3>].
   #[inline]
   fn to_array<const N: usize>(&self) -> Option<[T; N]> where T: Copy {
     self.try_into().ok()
   }
 
-  /// Shortcut method to [`array::try_from`][https://doc.rust-lang.org/std/primitive.array.html#method.try_from].
+  /// Shortcut method to [`array::try_from`][<https://doc.rust-lang.org/std/primitive.array.html#method.try_from>].
   #[inline]
   fn to_ref_array<const N: usize>(&self) -> Option<&[T; N]> {
     self.try_into().ok()
   }
 
-  /// Shortcut method to [`array::try_from`][https://doc.rust-lang.org/std/primitive.array.html#method.try_from-2].
+  /// Shortcut method to [`array::try_from`][<https://doc.rust-lang.org/std/primitive.array.html#method.try_from-2>].
   #[inline]
   fn to_mut_array<const N: usize>(&mut self) -> Option<&mut [T; N]> {
     self.try_into().ok()
   }
 
-  /// Similar to [`slice::windows`][https://doc.rust-lang.org/std/primitive.slice.html#method.windows]
+  /// Similar to [`slice::windows`][<https://doc.rust-lang.org/std/primitive.slice.html#method.windows>]
   /// but mutable and uses a function due to iterator limitations.
   fn windows_mut_each<F>(&mut self, len: usize, mut f: F)
   where F: FnMut(&mut [T]) {
@@ -39,7 +39,7 @@ impl<T> SliceExt<T> for [T] {
     };
   }
 
-  /// Similar to [`slice::windows`][https://doc.rust-lang.org/std/primitive.slice.html#method.windows]
+  /// Similar to [`slice::windows`][<https://doc.rust-lang.org/std/primitive.slice.html#method.windows>]
   /// but mutable, takes a constant length parameter, and uses a function due to iterator limitations.
   fn array_windows_mut_each<F, const N: usize>(&mut self, mut f: F)
   where F: FnMut(&mut [T; N]) {
