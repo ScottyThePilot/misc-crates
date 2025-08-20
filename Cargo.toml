@@ -9,5 +9,6 @@ members = [
   "libs/puddle",
   "libs/slice-ext",
   "libs/uord",
+  "libs/vector-type",
   "libs/yggdrasil"
 ]
