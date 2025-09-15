@@ -8,6 +8,7 @@ members = [
   "libs/ids",
   "libs/puddle",
   "libs/slice-ext",
+  "libs/unicase",
   "libs/uord",
   "libs/vector-type",
   "libs/yggdrasil"
