@@ -73,6 +73,20 @@ impl_borrow!(
 
 
 
+impl<T: ?Sized> Ord for UniCase<T> where T: UniCaseEnabled {
+  fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    let self_chars = self.0.as_bytes().iter().map(u8::to_ascii_lowercase);
+    let other_chars = other.0.as_bytes().iter().map(u8::to_ascii_lowercase);
+    self_chars.cmp(other_chars)
+  }
+}
+
+impl<T: ?Sized> PartialOrd for UniCase<T> where T: UniCaseEnabled {
+  fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    Some(self.cmp(other))
+  }
+}
+
 impl<T: ?Sized> Eq for UniCase<T> where T: UniCaseEnabled {}
 
 impl<T: ?Sized> PartialEq for UniCase<T> where T: UniCaseEnabled {
