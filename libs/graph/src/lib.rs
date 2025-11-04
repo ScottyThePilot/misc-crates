@@ -170,52 +170,52 @@ impl<Node, Link> Graph<Node, Link> {
   }
 
   #[inline]
-  pub fn nodes(&self) -> Nodes<Node> {
+  pub fn nodes(&self) -> Nodes<'_, Node> {
     Nodes { inner: self.nodes.iter() }
   }
 
   #[inline]
-  pub fn nodes_mut(&mut self) -> NodesMut<Node> {
+  pub fn nodes_mut(&mut self) -> NodesMut<'_, Node> {
     NodesMut { inner: self.nodes.iter_mut() }
   }
 
   #[inline]
-  pub fn nodes_values(&self) -> NodesValues<Node> {
+  pub fn nodes_values(&self) -> NodesValues<'_, Node> {
     NodesValues { inner: self.nodes.values() }
   }
 
   #[inline]
-  pub fn nodes_values_mut(&mut self) -> NodesValuesMut<Node> {
+  pub fn nodes_values_mut(&mut self) -> NodesValuesMut<'_, Node> {
     NodesValuesMut { inner: self.nodes.values_mut() }
   }
 
   #[inline]
-  pub fn nodes_ids(&self) -> NodesIds<Node> {
+  pub fn nodes_ids(&self) -> NodesIds<'_, Node> {
     NodesIds { inner: self.nodes.keys() }
   }
 
   #[inline]
-  pub fn links(&self) -> Links<Node, Link> {
+  pub fn links(&self) -> Links<'_, Node, Link> {
     Links { inner: self.links.iter() }
   }
 
   #[inline]
-  pub fn links_mut(&mut self) -> LinksMut<Node, Link> {
+  pub fn links_mut(&mut self) -> LinksMut<'_, Node, Link> {
     LinksMut { inner: self.links.iter_mut() }
   }
 
   #[inline]
-  pub fn links_values(&self) -> LinksValues<Node, Link> {
+  pub fn links_values(&self) -> LinksValues<'_, Node, Link> {
     LinksValues { inner: self.links.values() }
   }
 
   #[inline]
-  pub fn links_values_mut(&mut self) -> LinksValuesMut<Node, Link> {
+  pub fn links_values_mut(&mut self) -> LinksValuesMut<'_, Node, Link> {
     LinksValuesMut { inner: self.links.values_mut() }
   }
 
   #[inline]
-  pub fn links_ids(&self) -> LinksIds<Node, Link> {
+  pub fn links_ids(&self) -> LinksIds<'_, Node, Link> {
     LinksIds { inner: self.links.keys() }
   }
 
