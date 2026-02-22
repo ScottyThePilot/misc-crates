@@ -188,7 +188,7 @@ macro_rules! vector_type {
     #[repr(C)]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     $vis_struct struct $VectorStruct<T> {
-      $($(#[$attr_field])* $field: T),*
+      $($(#[$attr_field])* pub $field: T),*
     }
 
     $(#[$attr_enum])*
