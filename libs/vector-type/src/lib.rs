@@ -75,6 +75,9 @@ pub mod private;
 ///   fn map_tagged<U>(self, mut f: impl FnMut($VectorEnum, T) -> U) -> $VectorStruct<U>;
 ///   fn try_map_opt<U>(self, mut f: impl FnMut(T) -> Option<U>) -> Option<$VectorStruct<U>>;
 ///   fn try_map_res<U, E>(self, mut f: impl FnMut(T) -> Result<U, E>) -> Result<$VectorStruct<U>, E>;
+///   fn from_fn(f: impl FnMut($VectorEnum) -> T) -> Self;
+///   fn try_from_fn_opt(f: impl FnMut($VectorEnum) -> Option<T>) -> Option<Self>;
+///   fn try_from_fn_res<E>(f: impl FnMut($VectorEnum) -> Result<T, E>) -> Result<Self, E>;
 ///   fn convert<U>(self) -> $VectorStruct<U> where T: Into<U>;
 ///   fn try_convert<U>(self) -> Result<$VectorStruct<U>, T::Error> where T: TryInto<U>;
 ///   const fn from_array(array: [T; $VectorEnum::VARIANTS_COUNT]) -> Self;
@@ -91,8 +94,11 @@ pub mod private;
 ///   const fn each_mut_array(&mut self) -> [&mut T; $VectorEnum::VARIANTS_COUNT];
 ///   fn test_all(&self, f: impl FnMut(&T) -> bool) -> bool;
 ///   fn test_any(&self, f: impl FnMut(&T) -> bool) -> bool;
-///   fn iter(&self) -> impl Iterator;
-///   fn iter_mut(&mut self) -> impl Iterator;
+///   fn iter(&self) -> impl Iterator<Item = &T>;
+///   fn iter_mut(&mut self) -> impl Iterator<Item = &mut T>;
+///   fn iter_tagged(&self) -> impl Iterator<Item = ($VectorEnum, &T)>;
+///   fn iter_tagged_mut(&mut self) -> impl Iterator<Item = ($VectorEnum, &mut T)>;
+///   fn into_iter_tagged(self) -> impl Iterator<Item = ($VectorEnum, T);
 /// }
 ///
 /// impl $VectorStruct<bool> {
@@ -214,6 +220,9 @@ macro_rules! vector_type {
       }
 
       $vis_struct const fn zip<U>(self, other: $VectorStruct<U>) -> $VectorStruct<(T, U)> {
+        // SAFETY: Transmuting between any `$VectorStruct<T>` and `$VectorStruct<U>` is valid
+        // when `T` can be transmuted into `U`, and any `T` can be freely transmuted into any `ManuallyDrop<T>`
+        // due to `ManuallyDrop` being `repr(transparent)`
         let this = unsafe { $crate::private::transmute::<$VectorStruct<T>, $VectorStruct<core::mem::ManuallyDrop<T>>>(self) };
         let other = unsafe { $crate::private::transmute::<$VectorStruct<U>, $VectorStruct<core::mem::ManuallyDrop<U>>>(other) };
 
@@ -225,12 +234,12 @@ macro_rules! vector_type {
         }
       }
 
-      $vis_struct fn from_fn(mut f: impl core::ops::FnMut($VectorEnum) -> T) -> Self {
-        Self::UNIT.map_tagged(|tag, ()| f(tag))
-      }
-
       $vis_struct fn zip_with<U, V>(self, other: $VectorStruct<U>, mut f: impl core::ops::FnMut(T, U) -> V) -> $VectorStruct<V> {
         self.zip(other).map(|(t, u)| f(t, u))
+      }
+
+      $vis_struct fn zip_with_tagged<U, V>(self, other: $VectorStruct<U>, mut f: impl core::ops::FnMut($VectorEnum, T, U) -> V) -> $VectorStruct<V> {
+        self.zip(other).map_tagged(|tag, (t, u)| f(tag, t, u))
       }
 
       $vis_struct fn map<U>(self, mut f: impl core::ops::FnMut(T) -> U) -> $VectorStruct<U> {
@@ -249,6 +258,18 @@ macro_rules! vector_type {
         core::result::Result::Ok($VectorStruct { $($field: f(self.$field)?),* })
       }
 
+      $vis_struct fn from_fn(f: impl core::ops::FnMut($VectorEnum) -> T) -> Self {
+        $VectorEnum::VARIANTS.map(f)
+      }
+
+      $vis_struct fn try_from_fn_opt(f: impl core::ops::FnMut($VectorEnum) -> core::option::Option<T>) -> core::option::Option<Self> {
+        $VectorEnum::VARIANTS.try_map_opt(f)
+      }
+
+      $vis_struct fn try_from_fn_res<E>(f: impl core::ops::FnMut($VectorEnum) -> core::result::Result<T, E>) -> core::result::Result<Self, E> {
+        $VectorEnum::VARIANTS.try_map_res(f)
+      }
+
       $vis_struct fn convert<U>(self) -> $VectorStruct<U> where T: core::convert::Into<U> {
         self.map(T::into)
       }
@@ -258,26 +279,33 @@ macro_rules! vector_type {
       }
 
       $vis_struct const fn from_array(array: [T; $VectorEnum::VARIANTS_COUNT]) -> Self {
+        // SAFETY: Since `$VectorStruct<T>` is `repr(C)` it can be transmuted into `[T; N]` as long as `N` is the correct number of fields,
+        // and `$VectorEnum::VARIANTS_COUNT` is the correct number of fields on `$VectorStruct`
         unsafe { $crate::private::transmute::<[T; $VectorEnum::VARIANTS_COUNT], $VectorStruct<T>>(array) }
       }
 
       $vis_struct const fn from_array_ref(array: &[T; $VectorEnum::VARIANTS_COUNT]) -> &Self {
+        // SAFETY: See above
         unsafe { $crate::private::transmute_ref::<[T; $VectorEnum::VARIANTS_COUNT], $VectorStruct<T>>(array) }
       }
 
       $vis_struct const fn from_array_ref_mut(array: &mut [T; $VectorEnum::VARIANTS_COUNT]) -> &mut Self {
+        // SAFETY: See above
         unsafe { $crate::private::transmute_ref_mut::<[T; $VectorEnum::VARIANTS_COUNT], $VectorStruct<T>>(array) }
       }
 
       $vis_struct const fn into_array(self) -> [T; $VectorEnum::VARIANTS_COUNT] {
+        // SAFETY: See above
         unsafe { $crate::private::transmute::<$VectorStruct<T>, [T; $VectorEnum::VARIANTS_COUNT]>(self) }
       }
 
       $vis_struct const fn as_array_ref(&self) -> &[T; $VectorEnum::VARIANTS_COUNT] {
+        // SAFETY: See above
         unsafe { $crate::private::transmute_ref::<$VectorStruct<T>, [T; $VectorEnum::VARIANTS_COUNT]>(self) }
       }
 
       $vis_struct const fn as_array_ref_mut(&mut self) -> &mut [T; $VectorEnum::VARIANTS_COUNT] {
+        // SAFETY: See above
         unsafe { $crate::private::transmute_ref_mut::<$VectorStruct<T>, [T; $VectorEnum::VARIANTS_COUNT]>(self) }
       }
 
@@ -319,6 +347,36 @@ macro_rules! vector_type {
 
       $vis_struct fn iter_mut(&mut self) -> <&mut Self as core::iter::IntoIterator>::IntoIter {
         core::iter::IntoIterator::into_iter(self)
+      }
+
+      $vis_struct fn iter_tagged(&self) -> core::iter::Zip<
+        <$VectorStruct<$VectorEnum> as core::iter::IntoIterator>::IntoIter,
+        <&Self as core::iter::IntoIterator>::IntoIter
+      > {
+        core::iter::Iterator::zip(
+          core::iter::IntoIterator::into_iter($VectorEnum::VARIANTS),
+          core::iter::IntoIterator::into_iter(self)
+        )
+      }
+
+      $vis_struct fn iter_tagged_mut(&mut self) -> core::iter::Zip<
+        <$VectorStruct<$VectorEnum> as core::iter::IntoIterator>::IntoIter,
+        <&mut Self as core::iter::IntoIterator>::IntoIter
+      > {
+        core::iter::Iterator::zip(
+          core::iter::IntoIterator::into_iter($VectorEnum::VARIANTS),
+          core::iter::IntoIterator::into_iter(self)
+        )
+      }
+
+      $vis_struct fn into_iter_tagged(self) -> core::iter::Zip<
+        <$VectorStruct<$VectorEnum> as core::iter::IntoIterator>::IntoIter,
+        <Self as core::iter::IntoIterator>::IntoIter
+      > {
+        core::iter::Iterator::zip(
+          core::iter::IntoIterator::into_iter($VectorEnum::VARIANTS),
+          core::iter::IntoIterator::into_iter(self)
+        )
       }
     }
 
@@ -522,4 +580,8 @@ mod tests {
       field3: Field3
     }
   }
+
+  const _: () = {
+    core::assert!(VectorField::VARIANTS_COUNT == 3);
+  };
 }
