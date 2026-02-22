@@ -199,6 +199,8 @@ macro_rules! vector_type {
     }
 
     impl<T> $VectorStruct<T> {
+      $vis_struct const UNIT: $VectorStruct<()> = $VectorStruct::splat(());
+
       $vis_struct const fn splat(value: T) -> Self where T: core::marker::Copy {
         Self::from_array([value; $VectorEnum::VARIANTS_COUNT])
       }
@@ -221,6 +223,10 @@ macro_rules! vector_type {
             core::mem::ManuallyDrop::into_inner(other.$field)
           )),*
         }
+      }
+
+      $vis_struct fn from_fn(mut f: impl core::ops::FnMut($VectorEnum) -> T) -> Self {
+        Self::UNIT.map_tagged(|tag, ()| f(tag))
       }
 
       $vis_struct fn zip_with<U, V>(self, other: $VectorStruct<U>, mut f: impl core::ops::FnMut(T, U) -> V) -> $VectorStruct<V> {
