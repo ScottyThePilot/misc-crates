@@ -1,3 +1,4 @@
+#![allow(deprecated)]
 extern crate graph;
 #[cfg(feature = "serde")]
 extern crate ron;

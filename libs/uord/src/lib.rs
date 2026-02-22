@@ -1,3 +1,5 @@
+#![allow(mismatched_lifetime_syntaxes)]
+#![deprecated = "https://github.com/ScottyThePilot/uord"]
 #![no_std]
 use core::cmp::Ordering;
 use core::borrow::Borrow;

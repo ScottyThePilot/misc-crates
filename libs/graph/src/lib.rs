@@ -1,3 +1,4 @@
+#![allow(deprecated)]
 extern crate ids;
 extern crate uord;
 extern crate nohash_hasher;
