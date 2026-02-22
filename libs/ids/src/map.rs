@@ -44,17 +44,17 @@ impl<T> IdMap<T> {
   }
 
   #[inline]
-  pub fn ids(&self) -> Ids<T> {
+  pub fn ids(&self) -> Ids<'_, T> {
     Ids { inner: self.map.keys() }
   }
 
   #[inline]
-  pub fn values(&self) -> Values<T> {
+  pub fn values(&self) -> Values<'_, T> {
     Values { inner: self.map.values() }
   }
 
   #[inline]
-  pub fn values_mut(&mut self) -> ValuesMut<T> {
+  pub fn values_mut(&mut self) -> ValuesMut<'_, T> {
     ValuesMut { inner: self.map.values_mut() }
   }
 
@@ -64,12 +64,12 @@ impl<T> IdMap<T> {
   }
 
   #[inline]
-  pub fn iter(&self) -> Iter<T> {
+  pub fn iter(&self) -> Iter<'_, T> {
     self.into_iter()
   }
 
   #[inline]
-  pub fn iter_mut(&mut self) -> IterMut<T> {
+  pub fn iter_mut(&mut self) -> IterMut<'_, T> {
     self.into_iter()
   }
 
@@ -84,7 +84,7 @@ impl<T> IdMap<T> {
   }
 
   #[inline]
-  pub fn drain(&mut self) -> Drain<T> {
+  pub fn drain(&mut self) -> Drain<'_, T> {
     self.context.current_id = 0;
     Drain { inner: self.map.drain() }
   }
