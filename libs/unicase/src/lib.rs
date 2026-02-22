@@ -11,7 +11,7 @@ use std::borrow::{Borrow, BorrowMut, Cow};
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, TransparentWrapper, Default)]
-pub struct UniCase<T: ?Sized>(T);
+pub struct UniCase<T: ?Sized>(pub T);
 
 impl<T: ?Sized> UniCase<T> {
   pub fn borrowed<U: ?Sized>(&self) -> &UniCase<U> where T: Borrow<U> {
@@ -73,15 +73,47 @@ impl_borrow!(
 
 
 
-impl<T: ?Sized> Ord for UniCase<T> where T: UniCaseEnabled {
+impl Ord for UniCase<u8> {
+  #[inline]
   fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-    let self_chars = self.0.as_bytes().iter().map(u8::to_ascii_lowercase);
-    let other_chars = other.0.as_bytes().iter().map(u8::to_ascii_lowercase);
-    self_chars.cmp(other_chars)
+    self.0.to_ascii_lowercase().cmp(&other.0.to_ascii_lowercase())
+  }
+}
+
+impl PartialOrd for UniCase<u8> {
+  #[inline]
+  fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    Some(self.cmp(other))
+  }
+}
+
+impl Eq for UniCase<u8> {}
+
+impl PartialEq for UniCase<u8> {
+  #[inline]
+  fn eq(&self, other: &Self) -> bool {
+    self.0.eq_ignore_ascii_case(&other.0)
+  }
+}
+
+impl Hash for UniCase<u8> {
+  #[inline]
+  fn hash<H: Hasher>(&self, state: &mut H) {
+    self.0.to_ascii_lowercase().hash(state);
+  }
+}
+
+
+
+impl<T: ?Sized> Ord for UniCase<T> where T: UniCaseEnabled {
+  #[inline]
+  fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    self.0.cmp_ignore_ascii_case(&other.0)
   }
 }
 
 impl<T: ?Sized> PartialOrd for UniCase<T> where T: UniCaseEnabled {
+  #[inline]
   fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
     Some(self.cmp(other))
   }
@@ -90,20 +122,16 @@ impl<T: ?Sized> PartialOrd for UniCase<T> where T: UniCaseEnabled {
 impl<T: ?Sized> Eq for UniCase<T> where T: UniCaseEnabled {}
 
 impl<T: ?Sized> PartialEq for UniCase<T> where T: UniCaseEnabled {
+  #[inline]
   fn eq(&self, other: &UniCase<T>) -> bool {
-    self.0.as_bytes().eq_ignore_ascii_case(other.0.as_bytes())
-  }
-}
-
-impl Hash for UniCase<u8> {
-  fn hash<H: Hasher>(&self, state: &mut H) {
-    self.0.to_ascii_lowercase().hash(state);
+    self.0.eq_ignore_ascii_case(&other.0)
   }
 }
 
 impl<T: ?Sized> Hash for UniCase<T> where T: UniCaseEnabled {
+  #[inline]
   fn hash<H: Hasher>(&self, state: &mut H) {
-    UniCase::<u8>::wrap_slice(self.0.as_bytes()).hash(state);
+    self.0.hash_ignore_ascii_case(state);
   }
 }
 
@@ -111,6 +139,22 @@ impl<T: ?Sized> Hash for UniCase<T> where T: UniCaseEnabled {
 
 pub trait UniCaseEnabled {
   fn as_bytes(&self) -> &[u8];
+
+  #[inline]
+  fn eq_ignore_ascii_case(&self, other: &Self) -> bool {
+    self.as_bytes().eq_ignore_ascii_case(other.as_bytes())
+  }
+
+  fn cmp_ignore_ascii_case(&self, other: &Self) -> std::cmp::Ordering {
+    let self_iter = self.as_bytes().iter().map(u8::to_ascii_lowercase);
+    let other_iter = other.as_bytes().iter().map(u8::to_ascii_lowercase);
+    self_iter.cmp(other_iter)
+  }
+
+  #[inline]
+  fn hash_ignore_ascii_case<H: Hasher>(&self, state: &mut H) {
+    UniCase::<u8>::wrap_slice(self.as_bytes()).hash(state);
+  }
 }
 
 macro_rules! impl_unicase_enabled {
@@ -131,7 +175,7 @@ impl_unicase_enabled!(
   [T: UniCaseEnabled + ?Sized] for Box<T> => |i| T::as_bytes(i),
   [T: UniCaseEnabled + ?Sized] for std::rc::Rc<T> => |i| T::as_bytes(i),
   [T: UniCaseEnabled + ?Sized] for std::sync::Arc<T> => |i| T::as_bytes(i),
-  ['a, T: UniCaseEnabled + Clone + ?Sized] for Cow<'a, T> => |i| i.as_ref().as_bytes(),
+  [T: UniCaseEnabled + ToOwned + ?Sized] for Cow<'_, T> => |i| i.as_ref().as_bytes(),
   for [u8] => |i| i,
   for Vec<u8> => |i| i.as_slice(),
   for str => |i| i.as_bytes(),

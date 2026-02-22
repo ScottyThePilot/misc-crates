@@ -95,6 +95,7 @@ macro_rules! maybe {
 pub trait Print {
   type Output;
 
+  #[track_caller]
   fn print(self) -> Self::Output;
 }
 
